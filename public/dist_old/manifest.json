@@ -1,0 +1,25 @@
+{
+  "name": "KitchenSynk - AI Pantry & Household Assistant",
+  "short_name": "KitchenSynk",
+  "description": "AI pantry barcode scanner, zero-waste recipe generator, diabetic care warnings, and collaborative 5-digit Synk Code grocery lists.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#059669",
+  "orientation": "portrait",
+  "categories": ["food", "lifestyle", "utilities"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

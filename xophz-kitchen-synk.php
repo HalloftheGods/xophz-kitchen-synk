@@ -19,8 +19,14 @@ define( 'XOPHZ_KITCHEN_SYNK_URL', plugin_dir_url( __FILE__ ) );
 
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'class-kitchen-synk-api.php';
 
+require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/class-kitchen-synk-api.php';
+
 class Xophz_Kitchen_Synk {
+    private $api;
+
     public function __construct() {
+        $this->api = new Kitchen_Synk_API();
+
         add_action( 'admin_menu', array( $this, 'add_plugin_admin_menu' ) );
         add_action( 'admin_init', array( $this, 'register_settings' ) );
         add_action( 'admin_bar_menu', array( $this, 'add_admin_bar_button' ), 90 );
@@ -36,6 +42,8 @@ class Xophz_Kitchen_Synk {
         // Public rewrite and template
         add_filter( 'query_vars', array( $this, 'register_query_vars' ) );
         add_action( 'init', array( $this, 'register_rewrites' ) );
+        add_action( 'init', array( $this, 'handle_api_request' ), 5 );
+        add_action( 'template_redirect', array( $this, 'handle_api_request' ), 5 );
         add_action( 'template_redirect', array( $this, 'template_redirect' ) );
     }
 
@@ -347,13 +355,25 @@ class Xophz_Kitchen_Synk {
     public function register_query_vars( $vars ) {
         $vars[] = 'xophz_kitchen_synk';
         $vars[] = 'xophz_kitchen_synk_force_prod';
+        $vars[] = 'xophz_kitchen_synk_api';
         return $vars;
     }
 
     public function register_rewrites() {
         $slug = get_option( 'xophz_kitchen_synk_custom_slug', 'kitchen-synk' );
 
+        add_rewrite_rule(
+            '^api/(.*)?$',
+            'index.php?xophz_kitchen_synk_api=1',
+            'top'
+        );
+
         if ( ! empty( $slug ) ) {
+            add_rewrite_rule(
+                '^' . preg_quote( $slug, '/' ) . '/api/(.*)?$',
+                'index.php?xophz_kitchen_synk_api=1',
+                'top'
+            );
             add_rewrite_rule(
                 '^' . preg_quote( $slug, '/' ) . '/?$',
                 'index.php?xophz_kitchen_synk=1',
@@ -388,6 +408,69 @@ class Xophz_Kitchen_Synk {
             'index.php?xophz_kitchen_synk=1&xophz_kitchen_synk_force_prod=1',
             'top'
         );
+    }
+
+    public function handle_api_request() {
+        if ( ! isset( $_SERVER['REQUEST_URI'] ) ) {
+            return;
+        }
+        $path = parse_url( $_SERVER['REQUEST_URI'], PHP_URL_PATH );
+        $slug = get_option( 'xophz_kitchen_synk_custom_slug', 'kitchen-synk' );
+
+        $is_api_call = (
+            strpos( $path, '/api/barcode-lookup' ) !== false ||
+            strpos( $path, '/api/gemini/scan-barcode' ) !== false ||
+            strpos( $path, '/api/gemini/scan-pantry' ) !== false ||
+            strpos( $path, '/api/gemini/generate-recipes' ) !== false ||
+            ( ! empty( $slug ) && strpos( $path, '/' . $slug . '/api/' ) !== false ) ||
+            get_query_var( 'xophz_kitchen_synk_api' )
+        );
+
+        if ( ! $is_api_call ) {
+            return;
+        }
+
+        header( 'Access-Control-Allow-Origin: *' );
+        header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
+        header( 'Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With' );
+
+        if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === $_SERVER['REQUEST_METHOD'] ) {
+            status_header( 200 );
+            exit;
+        }
+
+        $input_raw  = file_get_contents( 'php://input' );
+        $input_data = json_decode( $input_raw, true );
+        if ( ! is_array( $input_data ) ) {
+            $input_data = array();
+        }
+
+        if ( strpos( $path, 'barcode-lookup' ) !== false ) {
+            $barcode  = isset( $input_data['barcode'] ) ? $input_data['barcode'] : '';
+            $response = $this->api->handle_barcode_lookup( $barcode );
+        } elseif ( strpos( $path, 'scan-barcode' ) !== false ) {
+            $response = $this->api->handle_scan_barcode( $input_data );
+        } elseif ( strpos( $path, 'scan-pantry' ) !== false ) {
+            $response = $this->api->handle_scan_pantry( $input_data );
+        } elseif ( strpos( $path, 'generate-recipes' ) !== false ) {
+            $response = $this->api->handle_generate_recipes( $input_data );
+        } else {
+            return;
+        }
+
+        header( 'Content-Type: application/json; charset=UTF-8' );
+        if ( is_wp_error( $response ) ) {
+            $status = $response->get_error_data() && isset( $response->get_error_data()['status'] ) ? $response->get_error_data()['status'] : 500;
+            status_header( $status );
+            echo wp_json_encode( array( 'error' => $response->get_error_message() ) );
+        } elseif ( $response instanceof WP_REST_Response ) {
+            status_header( $response->get_status() );
+            echo wp_json_encode( $response->get_data() );
+        } else {
+            status_header( 200 );
+            echo wp_json_encode( $response );
+        }
+        exit;
     }
 
     private function is_dev_mode() {
@@ -435,9 +518,23 @@ class Xophz_Kitchen_Synk {
             }
             $vite_url = "//" . $wp_host . ":" . $vite_port;
 
-            $nonce    = wp_create_nonce( 'wp_rest' );
-            $user_id  = get_current_user_id();
-            $base_url = $this->get_kitchen_synk_base_url( '', $active_slug );
+            $nonce        = wp_create_nonce( 'wp_rest' );
+            $current_user = wp_get_current_user();
+            $is_logged_in = is_user_logged_in();
+            $user_id      = $current_user->ID;
+            $base_url     = $this->get_kitchen_synk_base_url( '', $active_slug );
+
+            $wp_user_data = array(
+                'isLoggedIn' => $is_logged_in,
+                'id'         => $user_id,
+                'name'       => $is_logged_in ? $current_user->display_name : 'Guest User',
+                'login'      => $is_logged_in ? $current_user->user_login : '',
+                'email'      => $is_logged_in ? $current_user->user_email : '',
+                'avatar'     => $is_logged_in ? get_avatar_url( $user_id, array( 'size' => 96 ) ) : '',
+                'roles'      => $is_logged_in ? array_values( $current_user->roles ) : array(),
+                'loginUrl'   => wp_login_url( $base_url ),
+                'logoutUrl'  => wp_logout_url( $base_url ),
+            );
 
             $wp_api_settings = "<script>window.wpApiSettings = { "
                 . "root: '" . esc_url_raw( rest_url() ) . "', "
@@ -447,7 +544,8 @@ class Xophz_Kitchen_Synk {
                 . "userId: " . (int) $user_id . ", "
                 . "loadMode: '" . esc_js( $load_mode ) . "', "
                 . "baseUrl: '" . esc_url_raw( $base_url ) . "', "
-                . "slug: '" . esc_js( $active_slug ) . "' "
+                . "slug: '" . esc_js( $active_slug ) . "', "
+                . "wpUser: " . wp_json_encode( $wp_user_data ) . " "
                 . "};</script>";
 
             if ( $is_dev ) {

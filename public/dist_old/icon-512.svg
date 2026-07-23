@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#064e3b"/>
+  <!-- Inner ring -->
+  <rect x="24" y="24" width="464" height="464" rx="88" fill="none" stroke="#10b981" stroke-width="8" opacity="0.4"/>
+  <!-- Refrigerator / Pantry Outline -->
+  <rect x="120" y="100" width="272" height="312" rx="28" fill="#0f172a" stroke="#34d399" stroke-width="12"/>
+  <line x1="120" y1="240" x2="392" y2="240" stroke="#34d399" stroke-width="10"/>
+  <!-- Handles -->
+  <rect x="144" y="150" width="12" height="56" rx="6" fill="#10b981"/>
+  <rect x="144" y="270" width="12" height="56" rx="6" fill="#10b981"/>
+  <!-- Fresh Leaf / Chef Hat Sparkle -->
+  <path d="M 330 140 C 370 110, 420 130, 400 180 C 360 210, 310 190, 330 140 Z" fill="#34d399"/>
+  <circle cx="280" cy="180" r="16" fill="#f59e0b"/>
+  <circle cx="220" cy="320" r="18" fill="#10b981"/>
+  <rect x="270" y="304" width="70" height="32" rx="8" fill="#059669"/>
+</svg>
