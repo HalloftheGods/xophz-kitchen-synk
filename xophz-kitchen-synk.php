@@ -472,6 +472,12 @@ class Xophz_Kitchen_Synk {
                 $content  = file_get_contents( $index_path );
                 $dist_url = XOPHZ_KITCHEN_SYNK_URL . 'public/dist/';
 
+                // Inject base tag so all relative assets (./assets/*, ./icon-192.svg, etc.) resolve directly to the plugin dist directory
+                $base_tag = '<base href="' . esc_url( $dist_url ) . '">';
+                if ( strpos( $content, '<base ' ) === false ) {
+                    $content = str_replace( '<head>', "<head>\n    " . $base_tag, $content );
+                }
+
                 $content = str_replace( 'href="/', 'href="' . $dist_url, $content );
                 $content = str_replace( 'src="/', 'src="' . $dist_url, $content );
                 $content = str_replace( 'href="./', 'href="' . $dist_url, $content );
