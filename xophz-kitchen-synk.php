@@ -17,6 +17,8 @@ define( 'XOPHZ_KITCHEN_SYNK_VERSION', '26.7.22' );
 define( 'XOPHZ_KITCHEN_SYNK_PATH', plugin_dir_path( __FILE__ ) );
 define( 'XOPHZ_KITCHEN_SYNK_URL', plugin_dir_url( __FILE__ ) );
 
+require_once XOPHZ_KITCHEN_SYNK_PATH . 'class-kitchen-synk-api.php';
+
 class Xophz_Kitchen_Synk {
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'add_plugin_admin_menu' ) );
@@ -36,7 +38,7 @@ class Xophz_Kitchen_Synk {
 
     public function disable_canonical_for_app_assets( $redirect_url, $requested_url ) {
         $slug = get_option( 'xophz_kitchen_synk_custom_slug', 'kitchen-synk' );
-        if ( ! empty( $slug ) && ( strpos( $requested_url, '/' . $slug . '/_next/' ) !== false || strpos( $requested_url, '/_next/' ) !== false ) ) {
+        if ( ! empty( $slug ) && ( strpos( $requested_url, '/' . $slug . '/assets/' ) !== false || strpos( $requested_url, '/assets/' ) !== false ) ) {
             return false;
         }
         $path = parse_url( $requested_url, PHP_URL_PATH );
@@ -118,86 +120,65 @@ class Xophz_Kitchen_Synk {
     }
 
     private function is_dev_mode() {
-        return ( defined( 'WP_ENV' ) && WP_ENV === 'development' ) || ( defined( 'WP_DEBUG' ) && WP_DEBUG );
+        if ( isset( $_GET['dev'] ) || isset( $_GET['vite'] ) ) {
+            return true;
+        }
+        if ( ( defined( 'WP_ENV' ) && WP_ENV === 'development' ) || ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ) {
+            return true;
+        }
+        // Auto-detect if Vite dev server is active on port 3005
+        $connection = @fsockopen( 'compass', 3005, $errno, $errstr, 1 );
+        if ( is_resource( $connection ) ) {
+            fclose( $connection );
+            return true;
+        }
+        return false;
     }
 
     public function template_redirect() {
         if ( get_query_var( 'xophz_kitchen_synk' ) ) {
             $is_dev = $this->is_dev_mode();
-            $next_port = '3005';
+            $vite_port = '3005';
             if ( isset( $_SERVER['HTTP_HOST'] ) ) {
                 $host_parts = explode(':', $_SERVER['HTTP_HOST']);
                 $wp_host = $host_parts[0];
             } else {
                 $wp_host = wp_parse_url( home_url(), PHP_URL_HOST );
             }
-            $next_url = "//" . $wp_host . ":" . $next_port;
-            $slug = get_option( 'xophz_kitchen_synk_custom_slug', 'kitchen-synk' );
+            $vite_url = "//" . $wp_host . ":" . $vite_port;
 
             if ( $is_dev ) {
                 $internal_host = 'compass';
-                $request_uri = $_SERVER['REQUEST_URI'];
-                
-                // If this is an asset request (e.g. /_next/ or static files like .css, .js, images)
-                $path = parse_url($request_uri, PHP_URL_PATH);
-                $extension = pathinfo($path, PATHINFO_EXTENSION);
-                $is_asset = strpos($request_uri, '/_next/') !== false || in_array(strtolower($extension), array('css', 'js', 'json', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'map'));
-
-                if ($is_asset) {
-                    $context = stream_context_create(array(
-                        'http' => array(
-                            'method' => $_SERVER['REQUEST_METHOD'],
-                            'ignore_errors' => true
-                        )
-                    ));
-                    $asset_data = @file_get_contents("http://{$internal_host}:{$next_port}" . $request_uri, false, $context);
-                    if ($asset_data !== false) {
-                        if (isset($http_response_header)) {
-                            foreach ($http_response_header as $header) {
-                                if (preg_match('/^Content-Type:/i', $header)) {
-                                    header($header);
-                                }
-                            }
-                        }
-                        echo $asset_data;
-                        exit;
-                    }
-                }
-                
-                // Fetch HTML from Next.js server
-                $dev_html = @file_get_contents("http://{$internal_host}:{$next_port}" . $request_uri);
-                
+                $dev_html = @file_get_contents("http://{$internal_host}:{$vite_port}/");
                 if ($dev_html) {
-                    $base_path = '/' . $slug;
-                    // Replace /kitchen-synk/_next/ with $next_url/kitchen-synk/_next/ cleanly without double replacing
-                    $dev_html = str_replace($base_path . '/_next/', $next_url . $base_path . '/_next/', $dev_html);
-                    $dev_html = str_replace('src="/_next/', 'src="' . $next_url . '/_next/', $dev_html);
-                    $dev_html = str_replace('href="/_next/', 'href="' . $next_url . '/_next/', $dev_html);
-                    
-                    // Rewrite API calls in HTML if present
-                    $dev_html = str_replace('"' . $base_path . '/api/', '"' . $next_url . $base_path . '/api/', $dev_html);
+                    // Rewrite relative src/href/import/from for dev server
+                    $dev_html = str_replace('src="/', 'src="' . $vite_url . '/', $dev_html);
+                    $dev_html = str_replace('href="/', 'href="' . $vite_url . '/', $dev_html);
+                    $dev_html = str_replace('import("/', 'import("' . $vite_url . '/', $dev_html);
+                    $dev_html = str_replace('from "/', 'from "' . $vite_url . '/', $dev_html);
+                    $dev_html = str_replace("from '/", "from '" . $vite_url . "/", $dev_html);
+
+                    // Inject Vite client if not present
+                    if (strpos($dev_html, '/@vite/client') === false) {
+                        $vite_client = '<script type="module" src="' . esc_url($vite_url) . '/@vite/client"></script>';
+                        $dev_html = str_replace('</head>', $vite_client . "\n</head>", $dev_html);
+                    }
 
                     $nonce = wp_create_nonce('wp_rest');
                     $user_id = get_current_user_id();
                     $wp_api_settings = "<script>window.wpApiSettings = { root: '" . esc_url_raw(rest_url()) . "', nonce: '" . $nonce . "', pluginUrl: '" . esc_url_raw(XOPHZ_KITCHEN_SYNK_URL) . "', version: '" . esc_js(XOPHZ_KITCHEN_SYNK_VERSION) . "', userId: " . $user_id . " };</script>";
-                    
-                    if (strpos($dev_html, '</head>') !== false) {
-                        $dev_html = str_replace('</head>', $wp_api_settings . "\n</head>", $dev_html);
-                    } else if (strpos($dev_html, '<body') !== false) {
-                        $dev_html = str_replace('<body', $wp_api_settings . "\n<body", $dev_html);
-                    } else {
-                        $dev_html = $wp_api_settings . $dev_html;
-                    }
+                    $dev_html = str_replace('</head>', $wp_api_settings . "\n</head>", $dev_html);
 
                     echo $dev_html;
                     exit;
                 }
             }
 
-            // Production static dist serving (matches xophz-compass-phone and xophz-compass-yellow-links)
+            // Production static dist serving
             $dist_path = XOPHZ_KITCHEN_SYNK_PATH . 'public/dist/';
             $request_uri = $_SERVER['REQUEST_URI'];
             $path = parse_url($request_uri, PHP_URL_PATH);
+            $slug = get_option( 'xophz_kitchen_synk_custom_slug', 'kitchen-synk' );
             $slug_prefix = '/' . $slug;
 
             // Remove slug prefix if present to find file in dist/
@@ -239,28 +220,21 @@ class Xophz_Kitchen_Synk {
                 $content = file_get_contents( $index_path );
                 $dist_url = XOPHZ_KITCHEN_SYNK_URL . 'public/dist/';
                 
-                // Rewrite asset paths for production
-                $content = str_replace( '"/' . $slug . '/_next/', '"' . $dist_url . '_next/', $content );
-                $content = str_replace( "'/" . $slug . "/_next/", "'" . $dist_url . "_next/", $content );
-                $content = str_replace( '"/_next/', '"' . $dist_url . '_next/', $content );
-                $content = str_replace( "'/_next/", "'" . $dist_url . "_next/", $content );
+                // Rewrite absolute paths for production assets
+                $content = str_replace( '"/assets/', '"' . $dist_url . 'assets/', $content );
+                $content = str_replace( "'/assets/", "'" . $dist_url . "assets/", $content );
+                $content = str_replace( '"/vite.svg"', '"' . $dist_url . 'vite.svg"', $content );
 
                 // Inject wpApiSettings for production REST API authentication
                 $nonce = wp_create_nonce('wp_rest');
                 $user_id = get_current_user_id();
                 $wp_api_settings = "<script>window.wpApiSettings = { root: '" . esc_url_raw(rest_url()) . "', nonce: '" . $nonce . "', pluginUrl: '" . esc_url_raw(XOPHZ_KITCHEN_SYNK_URL) . "', version: '" . esc_js(XOPHZ_KITCHEN_SYNK_VERSION) . "', userId: " . $user_id . " };</script>";
-                if ( strpos( $content, '</head>' ) !== false ) {
-                    $content = str_replace( '</head>', $wp_api_settings . "\n</head>", $content );
-                } else if ( strpos( $content, '<body' ) !== false ) {
-                    $content = str_replace( '<body', $wp_api_settings . "\n<body", $content );
-                } else {
-                    $content = $wp_api_settings . $content;
-                }
+                $content = str_replace('</head>', $wp_api_settings . "\n</head>", $content);
 
                 header( 'Content-Type: text/html; charset=UTF-8' );
                 echo $content;
             } else {
-                echo '<h2>Kitchen Synk is not built yet.</h2><p>Please run <code>npm run build</code> in the <code>apps/kitchen-synk</code> directory.</p>';
+                echo '<h2>Kitchen Synk is not built yet.</h2><p>Please run <code>pnpm --filter kitchen-synk build</code> in the root directory.</p>';
             }
             exit;
         }
