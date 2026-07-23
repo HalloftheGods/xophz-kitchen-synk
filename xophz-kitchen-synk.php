@@ -474,6 +474,8 @@ class Xophz_Kitchen_Synk {
 
                 $content = str_replace( '"/assets/', '"' . $dist_url . 'assets/', $content );
                 $content = str_replace( "'/assets/", "'" . $dist_url . "assets/", $content );
+                $content = str_replace( '"./assets/', '"' . $dist_url . 'assets/', $content );
+                $content = str_replace( "'./assets/", "'" . $dist_url . "assets/", $content );
                 $content = str_replace( '"/vite.svg"', '"' . $dist_url . 'vite.svg"', $content );
 
                 $content = str_replace( '</head>', $wp_api_settings . "\n</head>", $content );
