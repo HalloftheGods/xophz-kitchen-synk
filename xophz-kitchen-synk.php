@@ -472,11 +472,10 @@ class Xophz_Kitchen_Synk {
                 $content  = file_get_contents( $index_path );
                 $dist_url = XOPHZ_KITCHEN_SYNK_URL . 'public/dist/';
 
-                $content = str_replace( '"/assets/', '"' . $dist_url . 'assets/', $content );
-                $content = str_replace( "'/assets/", "'" . $dist_url . "assets/", $content );
-                $content = str_replace( '"./assets/', '"' . $dist_url . 'assets/', $content );
-                $content = str_replace( "'./assets/", "'" . $dist_url . "assets/", $content );
-                $content = str_replace( '"/vite.svg"', '"' . $dist_url . 'vite.svg"', $content );
+                $content = str_replace( 'href="/', 'href="' . $dist_url, $content );
+                $content = str_replace( 'src="/', 'src="' . $dist_url, $content );
+                $content = str_replace( 'href="./', 'href="' . $dist_url, $content );
+                $content = str_replace( 'src="./', 'src="' . $dist_url, $content );
 
                 $content = str_replace( '</head>', $wp_api_settings . "\n</head>", $content );
 
