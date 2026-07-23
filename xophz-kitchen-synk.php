@@ -42,14 +42,14 @@ class Xophz_Kitchen_Synk {
     /**
      * Get the active base URL for Kitchen Synk based on current load mode.
      */
-    public function get_kitchen_synk_base_url( $path = '' ) {
+    public function get_kitchen_synk_base_url( $path = '', $custom_slug = '' ) {
         $load_mode = get_option( 'xophz_kitchen_synk_load_mode', 'custom_slug' );
-        $slug      = get_option( 'xophz_kitchen_synk_custom_slug', 'kitchen-synk' );
+        $slug      = ! empty( $custom_slug ) ? $custom_slug : get_option( 'xophz_kitchen_synk_custom_slug', 'kitchen-synk' );
         $slug      = ! empty( $slug ) ? $slug : 'kitchen-synk';
 
-        if ( 'homepage' === $load_mode ) {
+        if ( 'homepage' === $load_mode && empty( $custom_slug ) ) {
             $base_url = home_url( '/' );
-        } elseif ( 'specific_page' === $load_mode ) {
+        } elseif ( 'specific_page' === $load_mode && empty( $custom_slug ) ) {
             $page_id = (int) get_option( 'xophz_kitchen_synk_load_page_id', 0 );
             if ( $page_id > 0 ) {
                 $base_url = trailingslashit( get_permalink( $page_id ) );
@@ -89,8 +89,12 @@ class Xophz_Kitchen_Synk {
             return false;
         }
 
+        if ( strpos( $requested_url, 'kitchen-synk-prod' ) !== false ) {
+            return false;
+        }
+
         $slug = get_option( 'xophz_kitchen_synk_custom_slug', 'kitchen-synk' );
-        if ( ! empty( $slug ) && ( strpos( $requested_url, '/' . $slug . '/assets/' ) !== false || strpos( $requested_url, '/assets/' ) !== false ) ) {
+        if ( ! empty( $slug ) && ( strpos( $requested_url, '/' . $slug . '/assets/' ) !== false || strpos( $requested_url, '/' . $slug . '-prod/assets/' ) !== false || strpos( $requested_url, '/assets/' ) !== false ) ) {
             return false;
         }
         $path = parse_url( $requested_url, PHP_URL_PATH );
@@ -152,6 +156,7 @@ class Xophz_Kitchen_Synk {
         }
 
         $base_url = $this->get_kitchen_synk_base_url();
+        $prod_url = home_url( '/kitchen-synk-prod/' );
 
         $wp_admin_bar->add_node( array(
             'id'    => 'kitchen-synk-menu',
@@ -165,8 +170,15 @@ class Xophz_Kitchen_Synk {
         $wp_admin_bar->add_node( array(
             'parent' => 'kitchen-synk-menu',
             'id'     => 'kitchen-synk-app',
-            'title'  => '🍳 Open App',
+            'title'  => '🍳 Open App (Dev)',
             'href'   => $base_url,
+        ) );
+
+        $wp_admin_bar->add_node( array(
+            'parent' => 'kitchen-synk-menu',
+            'id'     => 'kitchen-synk-app-prod',
+            'title'  => '📦 Open App (Prod Static)',
+            'href'   => $prod_url,
         ) );
 
         $wp_admin_bar->add_node( array(
@@ -212,6 +224,7 @@ class Xophz_Kitchen_Synk {
         $show_bar    = get_option( 'xophz_kitchen_synk_show_admin_bar', true );
         $is_dev      = $this->is_dev_mode();
         $app_url     = $this->get_kitchen_synk_base_url();
+        $prod_app_url = home_url( '/kitchen-synk-prod/' );
         ?>
         <div class="wrap">
             <h1>🍳 Kitchen Synk Settings</h1>
@@ -289,6 +302,7 @@ class Xophz_Kitchen_Synk {
                     <h2 style="margin-top:0;">System & Integration Info</h2>
                     <ul style="line-height: 1.8;">
                         <li><strong>Active Portal Endpoint:</strong> <a href="<?php echo esc_url( $app_url ); ?>" target="_blank"><code><?php echo esc_html( $app_url ); ?></code></a></li>
+                        <li><strong>Local Production Test Endpoint:</strong> <a href="<?php echo esc_url( $prod_app_url ); ?>" target="_blank"><code><?php echo esc_html( $prod_app_url ); ?></code></a></li>
                         <li><strong>Server Environment:</strong> <?php echo $is_dev ? '<span style="color:#d97706;font-weight:bold;">⚡ Vite Dev Mode (Port 3005)</span>' : '<span style="color:#16a34a;font-weight:bold;">📦 Production Static Bundle</span>'; ?></li>
                         <li><strong>REST API Namespace:</strong> <code><?php echo esc_url( rest_url( 'kitchen-synk/v1/' ) ); ?></code></li>
                     </ul>
@@ -332,6 +346,7 @@ class Xophz_Kitchen_Synk {
 
     public function register_query_vars( $vars ) {
         $vars[] = 'xophz_kitchen_synk';
+        $vars[] = 'xophz_kitchen_synk_force_prod';
         return $vars;
     }
 
@@ -349,10 +364,36 @@ class Xophz_Kitchen_Synk {
                 'index.php?xophz_kitchen_synk=1',
                 'top'
             );
+
+            $prod_slug = $slug . '-prod';
+            add_rewrite_rule(
+                '^' . preg_quote( $prod_slug, '/' ) . '/?$',
+                'index.php?xophz_kitchen_synk=1&xophz_kitchen_synk_force_prod=1',
+                'top'
+            );
+            add_rewrite_rule(
+                '^' . preg_quote( $prod_slug, '/' ) . '/(.*)?$',
+                'index.php?xophz_kitchen_synk=1&xophz_kitchen_synk_force_prod=1',
+                'top'
+            );
         }
+
+        add_rewrite_rule(
+            '^kitchen-synk-prod/?$',
+            'index.php?xophz_kitchen_synk=1&xophz_kitchen_synk_force_prod=1',
+            'top'
+        );
+        add_rewrite_rule(
+            '^kitchen-synk-prod/(.*)?$',
+            'index.php?xophz_kitchen_synk=1&xophz_kitchen_synk_force_prod=1',
+            'top'
+        );
     }
 
     private function is_dev_mode() {
+        if ( get_query_var( 'xophz_kitchen_synk_force_prod' ) || ( isset( $_SERVER['REQUEST_URI'] ) && strpos( $_SERVER['REQUEST_URI'], 'kitchen-synk-prod' ) !== false ) || isset( $_GET['prod'] ) ) {
+            return false;
+        }
         if ( isset( $_GET['dev'] ) || isset( $_GET['vite'] ) ) {
             return true;
         }
@@ -372,15 +413,19 @@ class Xophz_Kitchen_Synk {
         $is_slug_match            = (bool) get_query_var( 'xophz_kitchen_synk' );
         $is_configured_page       = $this->is_configured_page();
         $is_homepage_404_fallback = ( 'homepage' === $load_mode && is_404() );
+        $is_force_prod            = (bool) get_query_var( 'xophz_kitchen_synk_force_prod' ) || ( isset( $_SERVER['REQUEST_URI'] ) && strpos( $_SERVER['REQUEST_URI'], 'kitchen-synk-prod' ) !== false );
 
-        if ( $is_slug_match || $is_configured_page || $is_homepage_404_fallback ) {
+        if ( $is_slug_match || $is_configured_page || $is_homepage_404_fallback || $is_force_prod ) {
             status_header( 200 );
             global $wp_query;
             if ( is_object( $wp_query ) ) {
                 $wp_query->is_404 = false;
             }
 
-            $is_dev    = $this->is_dev_mode();
+            $slug        = get_option( 'xophz_kitchen_synk_custom_slug', 'kitchen-synk' );
+            $active_slug = $is_force_prod ? 'kitchen-synk-prod' : $slug;
+            $is_dev      = $is_force_prod ? false : $this->is_dev_mode();
+
             $vite_port = '3005';
             if ( isset( $_SERVER['HTTP_HOST'] ) ) {
                 $host_parts = explode( ':', $_SERVER['HTTP_HOST'] );
@@ -392,8 +437,7 @@ class Xophz_Kitchen_Synk {
 
             $nonce    = wp_create_nonce( 'wp_rest' );
             $user_id  = get_current_user_id();
-            $slug     = get_option( 'xophz_kitchen_synk_custom_slug', 'kitchen-synk' );
-            $base_url = $this->get_kitchen_synk_base_url();
+            $base_url = $this->get_kitchen_synk_base_url( '', $active_slug );
 
             $wp_api_settings = "<script>window.wpApiSettings = { "
                 . "root: '" . esc_url_raw( rest_url() ) . "', "
@@ -403,7 +447,7 @@ class Xophz_Kitchen_Synk {
                 . "userId: " . (int) $user_id . ", "
                 . "loadMode: '" . esc_js( $load_mode ) . "', "
                 . "baseUrl: '" . esc_url_raw( $base_url ) . "', "
-                . "slug: '" . esc_js( $slug ) . "' "
+                . "slug: '" . esc_js( $active_slug ) . "' "
                 . "};</script>";
 
             if ( $is_dev ) {
@@ -430,56 +474,63 @@ class Xophz_Kitchen_Synk {
 
             // Production static dist serving
             $dist_path   = XOPHZ_KITCHEN_SYNK_PATH . 'public/dist/';
+            $dist_url    = XOPHZ_KITCHEN_SYNK_URL . 'public/dist/';
             $request_uri = $_SERVER['REQUEST_URI'];
             $path        = parse_url( $request_uri, PHP_URL_PATH );
-            $slug_prefix = '/' . $slug;
 
             $rel_path = $path;
-            if ( strpos( $rel_path, $slug_prefix ) === 0 ) {
-                $rel_path = substr( $rel_path, strlen( $slug_prefix ) );
+            if ( strpos( $rel_path, '/' . $active_slug ) === 0 ) {
+                $rel_path = substr( $rel_path, strlen( '/' . $active_slug ) );
+            } elseif ( strpos( $rel_path, '/' . $slug ) === 0 ) {
+                $rel_path = substr( $rel_path, strlen( '/' . $slug ) );
             }
             $rel_path = ltrim( $rel_path, '/' );
 
-            $target_file = $dist_path . ( empty( $rel_path ) ? 'index.html' : $rel_path );
-
-            if ( file_exists( $target_file ) && ! is_dir( $target_file ) ) {
-                $mime_types = array(
-                    'css'   => 'text/css; charset=UTF-8',
-                    'js'    => 'application/javascript; charset=UTF-8',
-                    'json'  => 'application/json; charset=UTF-8',
-                    'png'   => 'image/png',
-                    'jpg'   => 'image/jpeg',
-                    'jpeg'  => 'image/jpeg',
-                    'gif'   => 'image/gif',
-                    'svg'   => 'image/svg+xml',
-                    'ico'   => 'image/x-icon',
-                    'woff'  => 'font/woff',
-                    'woff2' => 'font/woff2',
-                    'ttf'   => 'font/ttf',
-                    'html'  => 'text/html; charset=UTF-8',
-                );
-                $ext        = strtolower( pathinfo( $target_file, PATHINFO_EXTENSION ) );
-                if ( isset( $mime_types[ $ext ] ) ) {
-                    header( 'Content-Type: ' . $mime_types[ $ext ] );
+            // If a specific non-HTML asset file (e.g. assets/main.js, icon-192.svg) is requested via plugin rewrite
+            if ( ! empty( $rel_path ) && 'index.html' !== $rel_path && false === strpos( $rel_path, '.html' ) ) {
+                $target_file = $dist_path . $rel_path;
+                if ( file_exists( $target_file ) && ! is_dir( $target_file ) ) {
+                    $mime_types = array(
+                        'css'   => 'text/css; charset=UTF-8',
+                        'js'    => 'application/javascript; charset=UTF-8',
+                        'json'  => 'application/json; charset=UTF-8',
+                        'png'   => 'image/png',
+                        'jpg'   => 'image/jpeg',
+                        'jpeg'  => 'image/jpeg',
+                        'gif'   => 'image/gif',
+                        'svg'   => 'image/svg+xml',
+                        'ico'   => 'image/x-icon',
+                        'woff'  => 'font/woff',
+                        'woff2' => 'font/woff2',
+                        'ttf'   => 'font/ttf',
+                    );
+                    $ext        = strtolower( pathinfo( $target_file, PATHINFO_EXTENSION ) );
+                    if ( isset( $mime_types[ $ext ] ) ) {
+                        header( 'Content-Type: ' . $mime_types[ $ext ] );
+                    }
+                    readfile( $target_file );
+                    exit;
                 }
-                readfile( $target_file );
-                exit;
             }
 
-            // Fallback to serving public/dist/index.html
+            // Fallback to serving public/dist/index.html with absolute dist asset URL replacements
             $index_path = $dist_path . 'index.html';
             if ( file_exists( $index_path ) ) {
-                $content  = file_get_contents( $index_path );
-                $dist_url = XOPHZ_KITCHEN_SYNK_URL . 'public/dist/';
+                $content = file_get_contents( $index_path );
 
-                // Inject base tag so all relative assets (./assets/*, ./icon-192.svg, etc.) resolve directly to the plugin dist directory
+                // Inject base tag so relative asset resolution works cleanly
                 $base_tag = '<base href="' . esc_url( $dist_url ) . '">';
                 if ( strpos( $content, '<base ' ) === false ) {
                     $content = str_replace( '<head>', "<head>\n    " . $base_tag, $content );
                 }
 
-                $content = str_replace( 'href="/', 'href="' . $dist_url, $content );
-                $content = str_replace( 'src="/', 'src="' . $dist_url, $content );
+                // Rewrite all asset paths to absolute plugin dist URL
+                $content = str_replace( 'src="./assets/', 'src="' . $dist_url . 'assets/', $content );
+                $content = str_replace( 'href="./assets/', 'href="' . $dist_url . 'assets/', $content );
+                $content = str_replace( 'src="assets/', 'src="' . $dist_url . 'assets/', $content );
+                $content = str_replace( 'href="assets/', 'href="' . $dist_url . 'assets/', $content );
+                $content = str_replace( 'href="/assets/', 'href="' . $dist_url . 'assets/', $content );
+                $content = str_replace( 'src="/assets/', 'src="' . $dist_url . 'assets/', $content );
                 $content = str_replace( 'href="./', 'href="' . $dist_url, $content );
                 $content = str_replace( 'src="./', 'src="' . $dist_url, $content );
 
