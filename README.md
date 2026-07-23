@@ -1,27 +1,35 @@
 # Xophz Kitchen Synk (WordPress Plugin)
 
-**`xophz-kitchen-synk`** is the standalone WordPress plugin and proxy router for the **Kitchen Synk** Next.js application within the **Xophz-COMPASS** suite.
+**`xophz-kitchen-synk`** is the standalone WordPress plugin and proxy router for the **Kitchen Synk** web application within the **Xophz-COMPASS** suite.
 
-It bridges the Next.js frontend application (`apps/kitchen-synk`) with the WordPress backend, allowing the full Kitchen Synk web app to be served directly from a configurable WordPress URL slug (e.g. `/kitchen-synk`).
+It bridges the frontend application (`apps/kitchen-synk`) with the WordPress backend, allowing the full Kitchen Synk app to be served from a configurable URL slug, as the main site homepage (like Event Horizon), or on a targeted WordPress page.
 
 ---
 
 ## 🌟 Key Features
 
-* **Configurable Routing Slug**: Customizable URL endpoint (default: `/kitchen-synk`) managed via **Settings > Kitchen Synk** in the WordPress Admin dashboard.
+* **Flexible Deployment Modes**:
+  * **Custom Slug Mode**: Customizable URL endpoint (default: `/kitchen-synk`).
+  * **Homepage Mode**: Serves Kitchen Synk directly on your site's root front page (`/`).
+  * **Target Page Mode**: Replaces content on a chosen WordPress page.
+* **WordPress Admin Bar Integration**: Adds a quick access menu in the WP admin toolbar with instant navigation to Inventory, AI Recipes, Barcode Scanner, Grocery List, and WP Settings.
 * **Dual-Mode Proxy Routing**:
-  * **Development Mode (`WP_DEBUG` or `WP_ENV=development`)**: Proxies dynamic Next.js development server requests (`http://compass:3005`) with live Hot Module Replacement (HMR) asset rewriting.
+  * **Development Mode (`WP_DEBUG` or `WP_ENV=development`)**: Proxies dynamic Vite development server requests (`http://compass:3005`) with live Hot Module Replacement (HMR) asset rewriting.
   * **Production Mode**: Serves pre-compiled static assets from `public/dist/` directly through WordPress with optimized MIME headers and caching.
-* **WordPress REST API Injection**: Automatically injects global `window.wpApiSettings` (`root`, `nonce`, `pluginUrl`, `version`, `userId`) into the HTML payload for authenticated API communication.
-* **Asset & Canonical Rewrite Handling**: Disables standard WordPress canonical trailing slash redirects for `_next/` bundle assets and static media paths.
+* **WordPress REST API Injection**: Automatically injects global `window.wpApiSettings` (`root`, `nonce`, `pluginUrl`, `version`, `userId`, `loadMode`, `baseUrl`, `slug`) into the HTML payload for authenticated API communication.
+* **Asset & Canonical Rewrite Handling**: Disables standard WordPress canonical trailing slash redirects for bundle assets and static media paths.
 
 ---
 
 ## ⚙️ Administration & Settings
 
 1. Navigate to **WordPress Admin > Settings > Kitchen Synk**.
-2. Set the **Deployment Slug** (default: `kitchen-synk`).
-3. Saving settings automatically registers WordPress rewrite rules and flushes the rewrite cache.
+2. Select your desired **Load Mode**:
+   * **Custom Slug**: e.g., `/kitchen-synk`
+   * **Homepage Mode**: Replace home page (`/`)
+   * **Target Page**: Select a WordPress page from the dropdown.
+3. Toggle the **Admin Bar Menu** checkbox for quick navigation.
+4. Saving settings automatically registers WordPress rewrite rules and flushes the rewrite cache.
 
 ---
 
@@ -30,11 +38,11 @@ It bridges the Next.js frontend application (`apps/kitchen-synk`) with the WordP
 ### Development Mode
 
 1. Ensure WordPress `WP_DEBUG` or `WP_ENV` is set to `development`.
-2. Start the Kitchen Synk Next.js dev server from the monorepo root:
+2. Start the Kitchen Synk dev server from the monorepo root:
    ```bash
    pnpm dev:kitchen-synk
    ```
-3. Navigate to `http://localhost/kitchen-synk`.
+3. Navigate to your configured endpoint (e.g., `http://localhost/kitchen-synk` or `http://localhost/`).
 
 ### Production Deployment
 
@@ -52,7 +60,8 @@ It bridges the Next.js frontend application (`apps/kitchen-synk`) with the WordP
 ```
 wp-content/plugins/xophz-kitchen-synk/
 ├── README.md                # Plugin documentation
-├── xophz-kitchen-synk.php   # Main WordPress plugin bootstrap & proxy router
+├── class-kitchen-synk-api.php # REST API endpoints for AI recipes & saving
+├── xophz-kitchen-synk.php   # Main WordPress plugin bootstrap & settings UI
 └── public/
     └── dist/                # Production static export directory
 ```
