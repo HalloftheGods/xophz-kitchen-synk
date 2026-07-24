@@ -51,6 +51,19 @@ class Kitchen_Synk_API {
             ),
         ) );
 
+        register_rest_route( 'kitchen-synk/v1', '/connectors/google-tag', array(
+            array(
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => array( $this, 'rest_get_google_tag' ),
+                'permission_callback' => '__return_true',
+            ),
+            array(
+                'methods'             => WP_REST_Server::CREATABLE,
+                'callback'            => array( $this, 'rest_save_google_tag' ),
+                'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+            ),
+        ) );
+
         register_rest_route( 'kitchen-synk/v1', '/send-otp', array(
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => array( $this, 'rest_send_otp' ),
@@ -561,6 +574,35 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
 
         update_option( 'xophz_stripe_keys', $updated );
         return rest_ensure_response( array( 'success' => true, 'message' => 'Stripe connector keys updated successfully.' ) );
+    }
+
+    public function rest_get_google_tag( WP_REST_Request $request ) {
+        $tag_id = get_option( 'compass_google_tag_id', '' );
+        if ( empty( $tag_id ) && function_exists( 'wp_get_connectors' ) ) {
+            $connectors = wp_get_connectors();
+            if ( ! empty( $connectors['google_tag_id']['authentication']['setting_name'] ) ) {
+                $setting_name = $connectors['google_tag_id']['authentication']['setting_name'];
+                $tag_id = get_option( $setting_name, '' );
+            }
+        }
+        if ( empty( $tag_id ) ) {
+            $tag_id = get_option( 'xophz_google_tag_id', '' );
+        }
+        return rest_ensure_response( array(
+            'success' => true,
+            'tag_id'  => $tag_id,
+        ) );
+    }
+
+    public function rest_save_google_tag( WP_REST_Request $request ) {
+        $params = $request->get_json_params();
+        $tag_id = sanitize_text_field( $params['tag_id'] ?? '' );
+        update_option( 'compass_google_tag_id', $tag_id );
+        return rest_ensure_response( array(
+            'success' => true,
+            'message' => 'Google Tag ID updated successfully.',
+            'tag_id'  => $tag_id,
+        ) );
     }
 
     private function create_stripe_checkout_session( $user_id, $email, $tier, $price_id ) {
