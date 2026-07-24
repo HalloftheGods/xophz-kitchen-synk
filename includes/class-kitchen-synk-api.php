@@ -102,6 +102,11 @@ class Kitchen_Synk_API {
     }
 
     private function get_gemini_key() {
+        $official_key = get_option( 'connectors_ai_google_api_key' );
+        if ( ! empty( $official_key ) ) {
+            return $official_key;
+        }
+
         $key = getenv( 'GEMINI_API_KEY' );
         if ( ! empty( $key ) ) {
             return $key;
