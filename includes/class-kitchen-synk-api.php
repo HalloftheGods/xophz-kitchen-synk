@@ -564,8 +564,7 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
     }
 
     private function create_stripe_checkout_session( $user_id, $email, $tier, $price_id ) {
-        $keys = get_option( 'xophz_stripe_keys', array() );
-        $secret_key = $keys['secret_key'] ?? '';
+        $secret_key = get_option( 'compass_stripe_secret_key', '' );
 
         if ( empty( $secret_key ) ) {
             return new WP_Error( 'stripe_missing_keys', 'Stripe secret key is not configured in WP Connector.', array( 'status' => 500 ) );
@@ -579,6 +578,7 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
 
         $body_params = array(
             'payment_method_types[0]' => 'card',
+            'managed_payments[enabled]' => 'false',
             'line_items[0][price]'    => $price_id,
             'line_items[0][quantity]' => '1',
             'mode'                    => $mode,
@@ -590,6 +590,14 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
         if ( ! empty( $user_id ) && (int) $user_id > 0 ) {
             $body_params['client_reference_id']  = (string) $user_id;
             $body_params['metadata[wp_user_id]'] = (string) $user_id;
+            
+            if ( $mode === 'subscription' ) {
+                $body_params['subscription_data[metadata][wp_user_id]'] = (string) $user_id;
+                $body_params['subscription_data[metadata][user_type]']  = $tier;
+            } elseif ( $mode === 'payment' ) {
+                $body_params['payment_intent_data[metadata][wp_user_id]'] = (string) $user_id;
+                $body_params['payment_intent_data[metadata][user_type]']  = $tier;
+            }
         }
 
         if ( ! empty( $email ) ) {
@@ -781,8 +789,7 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
             return new WP_Error( 'missing_session_id', 'Stripe Session ID is required.', array( 'status' => 400 ) );
         }
 
-        $keys = get_option( 'xophz_stripe_keys', array() );
-        $secret_key = $keys['secret_key'] ?? '';
+        $secret_key = get_option( 'compass_stripe_secret_key', '' );
 
         if ( empty( $secret_key ) ) {
             return new WP_Error( 'stripe_missing_keys', 'Stripe secret key is not configured.', array( 'status' => 500 ) );
@@ -864,6 +871,44 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
             return new WP_Error( 'invalid_payload', 'Invalid webhook JSON payload.', array( 'status' => 400 ) );
         }
 
+        $keys = get_option( 'xophz_stripe_keys', array() );
+        $webhook_secret = $keys['webhook_secret'] ?? '';
+        $signature_header = $request->get_header( 'stripe_signature' );
+
+        if ( ! empty( $webhook_secret ) ) {
+            if ( empty( $signature_header ) ) {
+                return new WP_Error( 'missing_signature', 'Missing Stripe signature header.', array( 'status' => 400 ) );
+            }
+            $sig_parts = explode( ',', $signature_header );
+            $timestamp = '';
+            $signatures = array();
+            foreach ( $sig_parts as $part ) {
+                $split = explode( '=', trim( $part ), 2 );
+                if ( count( $split ) === 2 ) {
+                    if ( $split[0] === 't' ) {
+                        $timestamp = $split[1];
+                    } elseif ( $split[0] === 'v1' ) {
+                        $signatures[] = $split[1];
+                    }
+                }
+            }
+            if ( empty( $timestamp ) || empty( $signatures ) ) {
+                return new WP_Error( 'invalid_signature', 'Invalid Stripe signature format.', array( 'status' => 400 ) );
+            }
+            $signed_payload = $timestamp . '.' . $body;
+            $expected_sig = hash_hmac( 'sha256', $signed_payload, $webhook_secret );
+            $match = false;
+            foreach ( $signatures as $sig ) {
+                if ( hash_equals( $expected_sig, $sig ) ) {
+                    $match = true;
+                    break;
+                }
+            }
+            if ( ! $match ) {
+                return new WP_Error( 'signature_mismatch', 'Stripe signature mismatch.', array( 'status' => 400 ) );
+            }
+        }
+
         $type = $event['type'];
         $data = $event['data']['object'] ?? array();
 
@@ -892,6 +937,9 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
                 update_user_meta( $user_id, 'kitchensynk_user_type', $user_type );
                 update_user_meta( $user_id, 'kitchensynk_subscription_status', 'active' );
                 update_user_meta( $user_id, 'kitchensynk_stripe_customer_id', $data['customer'] ?? '' );
+                if ( ! empty( $data['subscription'] ) ) {
+                    update_user_meta( $user_id, 'kitchensynk_stripe_subscription_id', $data['subscription'] );
+                }
                 if ( class_exists( 'Xophz_Compass_Golden_Keys_API' ) ) {
                     Xophz_Compass_Golden_Keys_API::generate_license_key( $user_id, $user_type );
                 }
@@ -901,6 +949,7 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
             if ( $user_id ) {
                 update_user_meta( $user_id, 'kitchensynk_user_type', 'starter' );
                 update_user_meta( $user_id, 'kitchensynk_subscription_status', 'canceled' );
+                delete_user_meta( $user_id, 'kitchensynk_stripe_subscription_id' );
             }
         }
 
