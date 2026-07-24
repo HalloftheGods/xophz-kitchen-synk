@@ -94,6 +94,24 @@ class Kitchen_Synk_API {
             'permission_callback' => '__return_true',
         ) );
 
+        register_rest_route( 'kitchen-synk/v1', '/update-username', array(
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => array( $this, 'rest_update_username' ),
+            'permission_callback' => '__return_true',
+        ) );
+
+        register_rest_route( 'kitchen-synk/v1', '/me', array(
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => array( $this, 'rest_get_me' ),
+            'permission_callback' => '__return_true',
+        ) );
+
+        register_rest_route( 'kitchen-synk/v1', '/profile', array(
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => array( $this, 'rest_update_profile' ),
+            'permission_callback' => 'is_user_logged_in',
+        ) );
+
         register_rest_route( 'kitchen-synk/v1', '/license', array(
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => array( $this, 'rest_get_license' ),
@@ -123,7 +141,7 @@ class Kitchen_Synk_API {
             return new WP_Error( 'no_api_key', 'GEMINI_API_KEY is not configured on the server.', array( 'status' => 500 ) );
         }
 
-        $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . $api_key;
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=' . $api_key;
 
         $body = array(
             'contents' => $contents,
@@ -442,6 +460,7 @@ class Kitchen_Synk_API {
         $mealType = isset( $params['mealType'] ) ? $params['mealType'] : null;
         $customRequest = isset( $params['customRequest'] ) ? $params['customRequest'] : '';
         $userProfile = isset( $params['userProfile'] ) ? $params['userProfile'] : null;
+        $existingRecipes = isset( $params['existingRecipes'] ) ? $params['existingRecipes'] : array();
 
         if ( empty( $items ) || ! is_array( $items ) ) {
             return new WP_REST_Response( array( 'error' => 'No inventory items provided for recipe creation' ), 400 );
@@ -468,6 +487,7 @@ class Kitchen_Synk_API {
         $prepSection = $maxPrepTime ? "Max Preparation Time: {$maxPrepTime} minutes" : '';
         $mealSection = $mealType ? "Desired Meal Type: {$mealType}" : '';
         $customSection = $customRequest ? "Special Request: \"{$customRequest}\"" : '';
+        $excludeSection = ( ! empty( $existingRecipes ) && is_array( $existingRecipes ) ) ? 'DO NOT suggest or repeat any of the following existing/previously generated recipe titles: ' . implode( ', ', $existingRecipes ) : '';
 
         $prompt = "You are an elite culinary chef and zero-waste food consultant specializing in clinical nutrition and diabetic-friendly cooking.
 The user has the following items in their refrigerator and pantry:
@@ -481,10 +501,12 @@ The user has the following items in their refrigerator and pantry:
 
 CRITICAL DIRECTIVES FOR RECIPE GENERATION:
 1. HIGHEST PRIORITY: You MUST create recipes that incorporate as many EXPIRING SOON items (expiring in <= 3 days) as possible to prevent food waste!
-2. Create 3 distinct, appetizing, realistic recipes that can be made primarily with the user's available ingredients.
+2. Create 5 to 6 distinct, appetizing, diverse recipes covering all meal categories (including Breakfast, Lunch, Dinner, and Quick Snacks/Appetizers) so the user has options for every meal planner slot. Ensure appropriate tags like 'Breakfast', 'Lunch', 'Dinner', or 'Snack' are included in dietaryTags.
 3. If Diabetic profile is enabled, mark recipes clearly with \"Diabetic Friendly\", \"Low GI\", or \"Keto\" tags and ensure they don't cause blood sugar spikes.
 4. Identify which ingredients from user inventory are used, and if any extra minor staple ingredients are missing, list them in missingIngredients.
-5. Calculate a wasteSavingTip highlighting how much money or food this recipe saves.";
+5. Calculate a wasteSavingTip highlighting how much money or food this recipe saves.
+6. {$excludeSection}
+7. MANDATORY QUANTITY REQUIREMENT: Provide the exact required measurement/amount (e.g. '2 cups', '1 tbsp', '200g') for every item used in the recipe. Include a usedIngredientAmounts object mapping each used item name to its required amount.";
 
         $contents = array(
             array(
@@ -493,6 +515,12 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
                 ),
             ),
         );
+
+        $item_names = array_map(function($i) { return is_array($i) && isset($i['name']) ? trim($i['name']) : (is_string($i) ? trim($i) : ''); }, $items);
+        $item_names = array_values( array_unique( array_filter( $item_names ) ) );
+        if ( empty( $item_names ) ) {
+            $item_names = array( '' );
+        }
 
         $schema = array(
             'type'       => 'OBJECT',
@@ -507,14 +535,14 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
                             'description'        => array( 'type' => 'STRING' ),
                             'prepTime'           => array( 'type' => 'STRING' ),
                             'cookTime'           => array( 'type' => 'STRING' ),
-                            'difficulty'         => array( 'type' => 'STRING' ),
+                            'difficulty'         => array( 'type' => 'STRING', 'enum' => array('Easy', 'Medium', 'Advanced') ),
                             'usedExpiringItems'  => array(
                                 'type'  => 'ARRAY',
-                                'items' => array( 'type' => 'STRING' ),
+                                'items' => array( 'type' => 'STRING', 'enum' => $item_names ),
                             ),
                             'otherUsedItems'     => array(
                                 'type'  => 'ARRAY',
-                                'items' => array( 'type' => 'STRING' ),
+                                'items' => array( 'type' => 'STRING', 'enum' => $item_names ),
                             ),
                             'missingIngredients' => array(
                                 'type'  => 'ARRAY',
@@ -539,8 +567,12 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
                             'caloriesPerServing' => array( 'type' => 'INTEGER' ),
                             'servings'           => array( 'type' => 'INTEGER' ),
                             'wasteSavingTip'     => array( 'type' => 'STRING' ),
+                            'usedIngredientAmounts' => array(
+                                'type'       => 'OBJECT',
+                                'description' => 'Key-value map of used ingredient name to required amount string',
+                            ),
                         ),
-                        'required'   => array( 'id', 'title', 'description', 'prepTime', 'cookTime', 'difficulty', 'usedExpiringItems', 'instructions', 'wasteSavingTip' ),
+                        'required'   => array( 'id', 'title', 'description', 'prepTime', 'cookTime', 'difficulty', 'usedExpiringItems', 'otherUsedItems', 'missingIngredients', 'instructions', 'dietaryTags', 'caloriesPerServing', 'servings', 'wasteSavingTip' ),
                     ),
                 ),
             ),
@@ -552,7 +584,39 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
             return new WP_REST_Response( array( 'error' => $result->get_error_message() ), $result->get_error_data()['status'] );
         }
 
-        return new WP_REST_Response( array( 'recipes' => isset( $result['recipes'] ) ? $result['recipes'] : array() ), 200 );
+        $recipes = isset( $result['recipes'] ) ? $result['recipes'] : array();
+
+        // Backend validation for hallucinations and unique ID generation
+        foreach ( $recipes as &$r ) {
+            $r['id'] = 'recipe-ks-' . wp_generate_uuid4();
+            $used_expiring = $r['usedExpiringItems'] ?? array();
+            $other_used = $r['otherUsedItems'] ?? array();
+            
+            $valid_expiring = array();
+            $valid_other = array();
+            $missing = $r['missingIngredients'] ?? array();
+
+            foreach ( $used_expiring as $item ) {
+                if ( in_array( $item, $item_names ) ) {
+                    $valid_expiring[] = $item;
+                } else if ( ! empty( $item ) ) {
+                    $missing[] = array( 'name' => $item, 'amount' => 'To taste' );
+                }
+            }
+            foreach ( $other_used as $item ) {
+                if ( in_array( $item, $item_names ) ) {
+                    $valid_other[] = $item;
+                } else if ( ! empty( $item ) ) {
+                    $missing[] = array( 'name' => $item, 'amount' => 'To taste' );
+                }
+            }
+
+            $r['usedExpiringItems'] = $valid_expiring;
+            $r['otherUsedItems'] = $valid_other;
+            $r['missingIngredients'] = $missing;
+        }
+
+        return new WP_REST_Response( array( 'recipes' => $recipes ), 200 );
     }
 
     public function rest_get_stripe_keys( WP_REST_Request $request ) {
@@ -860,7 +924,8 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
             return new WP_Error( 'invalid_session', 'Could not verify Stripe checkout session.', array( 'status' => 400 ) );
         }
 
-        $user_id   = $session['client_reference_id'] ?? $session['metadata']['wp_user_id'] ?? null;
+        $raw_uid   = $session['client_reference_id'] ?? $session['metadata']['wp_user_id'] ?? null;
+        $user_id   = ( is_numeric( $raw_uid ) && intval( $raw_uid ) > 0 ) ? intval( $raw_uid ) : null;
         $user_type = $session['metadata']['user_type'] ?? 'individual';
         $email     = $session['customer_details']['email'] ?? $session['customer_email'] ?? '';
 
@@ -886,6 +951,14 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
             if ( ! empty( $session['customer'] ) ) {
                 update_user_meta( $user_id, 'kitchensynk_stripe_customer_id', $session['customer'] );
             }
+            $existing_profile = get_user_meta( $user_id, 'ks_user_profile', true );
+            if ( ! is_array( $existing_profile ) ) {
+                $existing_profile = array();
+            }
+            $existing_profile['planTier'] = $user_type;
+            $existing_profile['isPro']    = ( $user_type !== 'free' && $user_type !== 'starter' );
+            update_user_meta( $user_id, 'ks_user_profile', $existing_profile );
+
             if ( class_exists( 'Xophz_Compass_Golden_Keys_API' ) ) {
                 Xophz_Compass_Golden_Keys_API::generate_license_key( $user_id, $user_type );
             }
@@ -893,21 +966,65 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
             wp_set_current_user( $user_id );
             wp_set_auth_cookie( $user_id, true );
 
+            $username_set = get_user_meta( $user_id, 'kitchensynk_username_set', true );
             $user_obj = get_userdata( $user_id );
+
             return rest_ensure_response( array(
                 'success' => true,
                 'nonce'   => wp_create_nonce( 'wp_rest' ),
                 'user'    => array(
-                    'isLoggedIn' => true,
-                    'id'         => $user_id,
-                    'name'       => $user_obj ? $user_obj->display_name : 'User',
-                    'email'      => $user_obj ? $user_obj->user_email : $email,
-                    'tier'       => $user_type,
+                    'isLoggedIn'               => true,
+                    'id'                       => $user_id,
+                    'name'                     => $user_obj ? $user_obj->display_name : 'User',
+                    'email'                    => $user_obj ? $user_obj->user_email : $email,
+                    'tier'                     => $user_type,
+                    'roles'                    => $user_obj ? $user_obj->roles : array( 'subscriber' ),
+                    'needs_username_selection' => empty( $username_set ),
                 ),
             ) );
         }
 
         return rest_ensure_response( array( 'success' => false, 'message' => 'User account could not be resolved from checkout session.' ) );
+    }
+
+    public function rest_update_username( WP_REST_Request $request ) {
+        $params   = $request->get_json_params();
+        $user_id  = get_current_user_id();
+        $raw_name = sanitize_text_field( $params['username'] ?? '' );
+
+        if ( ! $user_id && ! empty( $params['user_id'] ) ) {
+            $user_id = intval( $params['user_id'] );
+        }
+
+        if ( empty( $raw_name ) ) {
+            return new WP_Error( 'missing_username', 'Username cannot be empty.', array( 'status' => 400 ) );
+        }
+
+        if ( $user_id ) {
+            wp_update_user( array(
+                'ID'           => $user_id,
+                'display_name' => $raw_name,
+            ) );
+            update_user_meta( $user_id, 'kitchensynk_username_set', 'true' );
+            update_user_meta( $user_id, 'kitchensynk_custom_username', $raw_name );
+
+            $user_obj = get_userdata( $user_id );
+            return rest_ensure_response( array(
+                'success' => true,
+                'nonce'   => wp_create_nonce( 'wp_rest' ),
+                'user'    => array(
+                    'id'                       => $user_id,
+                    'name'                     => $user_obj ? $user_obj->display_name : $raw_name,
+                    'email'                    => $user_obj ? $user_obj->user_email : '',
+                    'needs_username_selection' => false,
+                ),
+            ) );
+        }
+
+        return rest_ensure_response( array(
+            'success' => true,
+            'name'    => $raw_name,
+        ) );
     }
 
     public function rest_stripe_webhook( WP_REST_Request $request ) {
@@ -960,7 +1077,8 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
         $data = $event['data']['object'] ?? array();
 
         if ( $type === 'checkout.session.completed' || $type === 'invoice.paid' ) {
-            $user_id   = $data['client_reference_id'] ?? $data['metadata']['wp_user_id'] ?? null;
+            $raw_uid   = $data['client_reference_id'] ?? $data['metadata']['wp_user_id'] ?? null;
+            $user_id   = ( is_numeric( $raw_uid ) && intval( $raw_uid ) > 0 ) ? intval( $raw_uid ) : null;
             $user_type = $data['metadata']['user_type'] ?? 'individual';
             $email     = $data['customer_details']['email'] ?? $data['customer_email'] ?? '';
 
@@ -987,12 +1105,21 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
                 if ( ! empty( $data['subscription'] ) ) {
                     update_user_meta( $user_id, 'kitchensynk_stripe_subscription_id', $data['subscription'] );
                 }
+                $existing_profile = get_user_meta( $user_id, 'ks_user_profile', true );
+                if ( ! is_array( $existing_profile ) ) {
+                    $existing_profile = array();
+                }
+                $existing_profile['planTier'] = $user_type;
+                $existing_profile['isPro']    = ( $user_type !== 'free' && $user_type !== 'starter' );
+                update_user_meta( $user_id, 'ks_user_profile', $existing_profile );
+
                 if ( class_exists( 'Xophz_Compass_Golden_Keys_API' ) ) {
                     Xophz_Compass_Golden_Keys_API::generate_license_key( $user_id, $user_type );
                 }
             }
         } elseif ( $type === 'customer.subscription.deleted' ) {
-            $user_id = $data['metadata']['wp_user_id'] ?? null;
+            $raw_uid = $data['metadata']['wp_user_id'] ?? null;
+            $user_id = ( is_numeric( $raw_uid ) && intval( $raw_uid ) > 0 ) ? intval( $raw_uid ) : null;
             if ( $user_id ) {
                 update_user_meta( $user_id, 'kitchensynk_user_type', 'starter' );
                 update_user_meta( $user_id, 'kitchensynk_subscription_status', 'canceled' );
@@ -1001,6 +1128,57 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
         }
 
         return rest_ensure_response( array( 'received' => true ) );
+    }
+
+    public function rest_get_me( WP_REST_Request $request ) {
+        $user_id = get_current_user_id();
+        if ( ! $user_id ) {
+            return rest_ensure_response( array(
+                'success' => false,
+                'message' => 'Not authenticated.',
+                'user'    => array(
+                    'isLoggedIn' => false,
+                    'tier'       => 'starter',
+                ),
+            ) );
+        }
+
+        $user_obj = get_userdata( $user_id );
+        $tier     = get_user_meta( $user_id, 'kitchensynk_user_type', true ) ?: 'starter';
+        $profile  = get_user_meta( $user_id, 'ks_user_profile', true );
+        if ( ! is_array( $profile ) ) {
+            $profile = array();
+        }
+        $profile['planTier'] = $tier;
+        $profile['isPro']    = ( $tier !== 'free' && $tier !== 'starter' );
+
+        return rest_ensure_response( array(
+            'success' => true,
+            'user'    => array(
+                'isLoggedIn' => true,
+                'id'         => $user_id,
+                'name'       => $user_obj ? $user_obj->display_name : 'User',
+                'login'      => $user_obj ? $user_obj->user_login : '',
+                'email'      => $user_obj ? $user_obj->user_email : '',
+                'tier'       => $tier,
+                'isPro'      => $profile['isPro'],
+                'roles'      => $user_obj ? $user_obj->roles : array( 'subscriber' ),
+            ),
+            'profile' => $profile,
+        ) );
+    }
+
+    public function rest_update_profile( WP_REST_Request $request ) {
+        $user_id = get_current_user_id();
+        if ( ! $user_id ) {
+            return new WP_Error( 'unauthorized', 'User is not logged in.', array( 'status' => 401 ) );
+        }
+        $params  = $request->get_json_params();
+        $profile = $params['profile'] ?? array();
+        if ( is_array( $profile ) ) {
+            update_user_meta( $user_id, 'ks_user_profile', $profile );
+        }
+        return rest_ensure_response( array( 'success' => true ) );
     }
 
     public function rest_get_license( WP_REST_Request $request ) {

@@ -532,6 +532,7 @@ class Xophz_Kitchen_Synk {
                 'email'      => $is_logged_in ? $current_user->user_email : '',
                 'avatar'     => $is_logged_in ? get_avatar_url( $user_id, array( 'size' => 96 ) ) : '',
                 'roles'      => $is_logged_in ? array_values( $current_user->roles ) : array(),
+                'tier'       => $is_logged_in ? ( get_user_meta( $user_id, 'kitchensynk_user_type', true ) ?: 'starter' ) : 'free',
                 'loginUrl'   => wp_login_url( $base_url ),
                 'logoutUrl'  => wp_logout_url( $base_url ),
             );
