@@ -105,6 +105,12 @@ class Xophz_Kitchen_Synk_API {
             'permission_callback' => '__return_true',
         ) );
         
+        register_rest_route( 'kitchen-synk/v1', '/generate-meal-plan', array(
+            'methods'             => 'POST',
+            'callback'            => array( $this, 'generate_meal_plan' ),
+            'permission_callback' => '__return_true',
+        ) );
+
         register_rest_route( 'kitchen-synk/v1', '/save-recipe', array(
             'methods'             => 'POST',
             'callback'            => array( $this, 'save_recipe' ),
@@ -422,6 +428,87 @@ class Xophz_Kitchen_Synk_API {
         }
 
         return rest_ensure_response( array( 'recipes' => $recipes ) );
+    }
+
+    public function generate_meal_plan( WP_REST_Request $request ) {
+        $api_key = get_option( 'ks_gemini_api_key', '' );
+        if ( empty( $api_key ) ) {
+            return new WP_Error( 'missing_api_key', 'Gemini API Key is not set in Kitchen Synk plugin settings.', array( 'status' => 400 ) );
+        }
+
+        $params   = $request->get_json_params();
+        $items    = $params['items'] ?? array();
+        $dietary  = $params['dietaryPreferences'] ?? array();
+        $slots    = $params['slots'] ?? array('Breakfast', 'Lunch', 'Dinner', 'Snack');
+        $days     = $params['days'] ?? array('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday');
+
+        $prompt  = "You are a zero-waste culinary AI expert named Xophz-COMPASS. Generate a weekly meal plan.\n";
+        $prompt .= "Target Days: " . implode(', ', $days) . "\n";
+        $prompt .= "Target Slots: " . implode(', ', $slots) . "\n";
+        $prompt .= "Available Pantry & Fridge Inventory (prioritize items expiring soonest): " . json_encode($items) . "\n";
+        $prompt .= "Dietary Preferences: " . implode(', ', $dietary) . "\n";
+        $prompt .= "Return ONLY a raw JSON array of meal plan objects (no markdown backticks or formatting) matching this format:\n";
+        $prompt .= '[{"day": "Monday", "slot": "Breakfast", "recipe": {"id": "ai_plan_1", "title": "...", "description": "...", "prepTime": "15 mins", "cookTime": "10 mins", "difficulty": "Easy", "usedExpiringItems": [], "otherUsedItems": [], "missingIngredients": [{"name": "...", "amount": "..."}], "instructions": ["..."], "dietaryTags": ["..."], "caloriesPerServing": 350, "servings": 2, "wasteSavingTip": "..."}}]';
+
+        $body = array(
+            'contents' => array(
+                array( 'parts' => array( array( 'text' => $prompt ) ) )
+            )
+        );
+
+        $models = array( 'gemini-2.5-flash', 'gemini-1.5-flash' );
+        $response = null;
+        $code = 0;
+        $body_res = array();
+        $last_err_msg = '';
+
+        foreach ( $models as $model ) {
+            $gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $api_key;
+            
+            $res = wp_remote_post( $gemini_url, array(
+                'headers' => array( 'Content-Type' => 'application/json' ),
+                'body'    => wp_json_encode( $body ),
+                'timeout' => 35,
+            ) );
+
+            if ( is_wp_error( $res ) ) {
+                $last_err_msg = $res->get_error_message();
+                continue;
+            }
+
+            $c = wp_remote_retrieve_response_code( $res );
+            $b = json_decode( wp_remote_retrieve_body( $res ), true );
+
+            if ( $c === 200 && ! empty( $b['candidates'][0]['content']['parts'][0]['text'] ) ) {
+                $response = $res;
+                $code = $c;
+                $body_res = $b;
+                break;
+            }
+
+            if ( ! empty( $b['error']['message'] ) ) {
+                $last_err_msg = "Model {$model} error ({$c}): " . $b['error']['message'];
+            } else {
+                $last_err_msg = "Model {$model} returned status {$c}";
+            }
+        }
+
+        if ( $code !== 200 || empty( $body_res['candidates'][0]['content']['parts'][0]['text'] ) ) {
+            return new WP_Error( 'gemini_error', 'Gemini API Error: ' . ( $last_err_msg ?: 'Invalid response structure' ), array( 'status' => 500 ) );
+        }
+
+        $raw_text = $body_res['candidates'][0]['content']['parts'][0]['text'];
+        $raw_text = preg_replace('/```json/i', '', $raw_text);
+        $raw_text = preg_replace('/```/', '', $raw_text);
+        $raw_text = trim($raw_text);
+
+        $entries = json_decode( $raw_text, true );
+        
+        if ( ! is_array( $entries ) ) {
+            return new WP_Error( 'json_parse_error', 'Failed to parse JSON from AI: ' . substr($raw_text, 0, 200), array( 'status' => 500 ) );
+        }
+
+        return rest_ensure_response( array( 'entries' => $entries ) );
     }
 
     public function save_recipe( WP_REST_Request $request ) {
