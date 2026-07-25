@@ -1,10 +1,16 @@
 // KitchenSync Progressive Web App Service Worker
-const CACHE_NAME = 'kitchensync-pwa-cache-v1';
+const CACHE_NAME = 'kitchensync-pwa-cache-v2';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/manifest.json',
-  '/icon-192.svg',
-  '/icon-512.svg',
+  './',
+  './manifest.json',
+  './favicon.ico',
+  './favicon.svg',
+  './apple-touch-icon.png',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-192.svg',
+  './icon-512.svg',
+  './og-image.png',
 ];
 
 // Install Event

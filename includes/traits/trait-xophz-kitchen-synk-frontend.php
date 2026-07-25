@@ -190,18 +190,19 @@ trait Xophz_Kitchen_Synk_Frontend {
                 $target_file = $dist_path . $rel_path;
                 if ( file_exists( $target_file ) && ! is_dir( $target_file ) ) {
                     $mime_types = array(
-                        'css'   => 'text/css; charset=UTF-8',
-                        'js'    => 'application/javascript; charset=UTF-8',
-                        'json'  => 'application/json; charset=UTF-8',
-                        'png'   => 'image/png',
-                        'jpg'   => 'image/jpeg',
-                        'jpeg'  => 'image/jpeg',
-                        'gif'   => 'image/gif',
-                        'svg'   => 'image/svg+xml',
-                        'ico'   => 'image/x-icon',
-                        'woff'  => 'font/woff',
-                        'woff2' => 'font/woff2',
-                        'ttf'   => 'font/ttf',
+                        'css'         => 'text/css; charset=UTF-8',
+                        'js'          => 'application/javascript; charset=UTF-8',
+                        'json'        => 'application/json; charset=UTF-8',
+                        'webmanifest' => 'application/manifest+json; charset=UTF-8',
+                        'png'         => 'image/png',
+                        'jpg'         => 'image/jpeg',
+                        'jpeg'        => 'image/jpeg',
+                        'gif'         => 'image/gif',
+                        'svg'         => 'image/svg+xml',
+                        'ico'         => 'image/x-icon',
+                        'woff'        => 'font/woff',
+                        'woff2'       => 'font/woff2',
+                        'ttf'         => 'font/ttf',
                     );
                     $ext        = strtolower( pathinfo( $target_file, PATHINFO_EXTENSION ) );
                     if ( isset( $mime_types[ $ext ] ) ) {
