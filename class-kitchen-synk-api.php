@@ -425,8 +425,8 @@ class Xophz_Kitchen_Synk_API {
             )
         );
 
-        // Try gemini-2.0-flash first, fallback to gemini-2.0-flash-lite
-        $models = array( 'gemini-2.0-flash', 'gemini-2.0-flash-lite' );
+        // Try gemini-2.0-flash first, fallback to gemini-2.0-flash-lite-preview-02-05
+        $models = array( 'gemini-2.0-flash', 'gemini-2.0-flash-lite-preview-02-05' );
         $response = null;
         $code = 0;
         $body_res = array();
@@ -646,7 +646,7 @@ class Xophz_Kitchen_Synk_API {
             )
         );
 
-        $models = array( 'gemini-2.5-flash', 'gemini-1.5-flash' );
+        $models = array( 'gemini-2.0-flash', 'gemini-1.5-flash' );
         $response = null;
         $code = 0;
         $body_res = array();
@@ -767,7 +767,16 @@ class Xophz_Kitchen_Synk_API {
             }
         }
 
-        return rest_ensure_response( array( 'success' => true, 'id' => $post_id, 'imageUrl' => $image_url ?? null ) );
+        $post_url = get_permalink( $post_id );
+        $edit_url = get_edit_post_link( $post_id, 'raw' );
+
+        return rest_ensure_response( array(
+            'success'     => true,
+            'id'          => $post_id,
+            'imageUrl'    => $image_url ?? null,
+            'postUrl'     => $post_url ?: null,
+            'postEditUrl' => $edit_url ?: null,
+        ) );
     }
 
     private function fetch_recipe_image_data( $title, $recipe_data = array() ) {
@@ -798,16 +807,30 @@ class Xophz_Kitchen_Synk_API {
             strpos( $lower_title, 'slushie' ) !== false
         );
 
+        $is_soup = (
+            strpos( $lower_title, 'soup' ) !== false ||
+            strpos( $lower_title, 'stew' ) !== false ||
+            strpos( $lower_title, 'chili' ) !== false ||
+            strpos( $lower_title, 'curry' ) !== false ||
+            strpos( $lower_title, 'broth' ) !== false ||
+            strpos( $lower_title, 'bisque' ) !== false ||
+            strpos( $lower_title, 'bowl' ) !== false ||
+            strpos( $lower_title, 'chowder' ) !== false
+        );
+
         $vessel = $is_drink
             ? "Served inside a clear glass cup, tall transparent drinking glass, or mason jar with a colorful straw"
-            : "Served inside a clean round ceramic bowl or elegant plate";
+            : ( $is_soup
+                ? "Served inside a clean round ceramic bowl"
+                : "Served on a flat elegant ceramic plate"
+            );
 
         $ac_prompt = "Animal Crossing New Horizons food dish item icon, 3d game render of {$title}{$ing_clause} {$vessel}, cute stylized 3d game asset, isometric view, isolated on pure solid white background, no table, no wooden board, no trivet";
 
         $api_key = $this->get_api_key();
         if ( ! empty( $api_key ) ) {
             // Try Gemini Flash Image generation first
-            $model = 'gemini-2.5-flash-image';
+            $model = 'gemini-2.0-flash';
             $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $api_key;
             $body = array(
                 'contents' => array(
@@ -919,9 +942,16 @@ class Xophz_Kitchen_Synk_API {
         
         $image_url = wp_get_attachment_url( $attach_id );
 
+        $target_id = $post ? $post->ID : $post_id;
+        $post_url  = $target_id ? get_permalink( $target_id ) : null;
+        $edit_url  = $target_id ? get_edit_post_link( $target_id, 'raw' ) : null;
+
         return rest_ensure_response( array(
-            'success' => true,
-            'imageUrl' => $image_url
+            'success'     => true,
+            'id'          => $target_id,
+            'imageUrl'    => $image_url,
+            'postUrl'     => $post_url ?: null,
+            'postEditUrl' => $edit_url ?: null,
         ) );
     }
 }
