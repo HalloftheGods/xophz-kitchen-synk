@@ -123,17 +123,43 @@ trait Xophz_Kitchen_Synk_Frontend {
             $user_id      = $current_user->ID;
             $base_url     = $this->get_kitchen_synk_base_url( '', $active_slug );
 
+            $referral_code = '';
+            $referral_link = '';
+            $referral_count = 0;
+            $bonus_months = 0;
+            
+            if ( $is_logged_in ) {
+                $referral_code = get_user_meta( $user_id, 'ks_referral_code', true );
+                if ( empty( $referral_code ) ) {
+                    $login         = strtolower( preg_replace( '/[^a-zA-Z0-9]/', '', $current_user->user_login ) );
+                    $referral_code = ( $login ? $login : 'chef' ) . '-' . substr( md5( $user_id . 'ks_ref_salt' ), 0, 6 );
+                    update_user_meta( $user_id, 'ks_referral_code', $referral_code );
+                }
+                
+                $list = get_user_meta( $user_id, 'ks_referrals_list', true );
+                if ( is_array( $list ) ) {
+                    $referral_count = count( $list );
+                }
+                
+                $bonus_months = (int) get_user_meta( $user_id, 'ks_bonus_months', true );
+                $referral_link = home_url( '/kitchen-synk/#/?ref=' . rawurlencode( $referral_code ) );
+            }
+
             $wp_user_data = array(
-                'isLoggedIn' => $is_logged_in,
-                'id'         => $user_id,
-                'name'       => $is_logged_in ? $current_user->display_name : 'Guest User',
-                'login'      => $is_logged_in ? $current_user->user_login : '',
-                'email'      => $is_logged_in ? $current_user->user_email : '',
-                'avatar'     => $is_logged_in ? get_avatar_url( $user_id, array( 'size' => 96 ) ) : '',
-                'roles'      => $is_logged_in ? array_values( $current_user->roles ) : array(),
-                'tier'       => $is_logged_in ? ( get_user_meta( $user_id, 'kitchensynk_user_type', true ) ?: 'starter' ) : 'free',
-                'loginUrl'   => wp_login_url( $base_url ),
-                'logoutUrl'  => wp_logout_url( $base_url ),
+                'isLoggedIn'     => $is_logged_in,
+                'id'             => $user_id,
+                'name'           => $is_logged_in ? $current_user->display_name : 'Guest User',
+                'login'          => $is_logged_in ? $current_user->user_login : '',
+                'email'          => $is_logged_in ? $current_user->user_email : '',
+                'avatar'         => $is_logged_in ? get_avatar_url( $user_id, array( 'size' => 96 ) ) : '',
+                'roles'          => $is_logged_in ? array_values( $current_user->roles ) : array(),
+                'tier'           => $is_logged_in ? ( get_user_meta( $user_id, 'kitchensynk_user_type', true ) ?: 'starter' ) : 'free',
+                'loginUrl'       => wp_login_url( $base_url ),
+                'logoutUrl'      => wp_logout_url( $base_url ),
+                'referralCode'   => $referral_code,
+                'referralLink'   => $referral_link,
+                'referralCount'  => $referral_count,
+                'bonusMonths'    => $bonus_months,
             );
 
             $wp_api_settings = "<script>window.wpApiSettings = { "
