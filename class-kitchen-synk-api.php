@@ -425,8 +425,8 @@ class Xophz_Kitchen_Synk_API {
             )
         );
 
-        // Try gemini-2.0-flash first, fallback to gemini-2.0-flash-lite-preview-02-05
-        $models = array( 'gemini-2.0-flash', 'gemini-2.0-flash-lite-preview-02-05' );
+        // Try gemini-2.0-flash first, fallback to gemini-1.5-flash
+        $models = array( 'gemini-2.0-flash', 'gemini-1.5-flash' );
         $response = null;
         $code = 0;
         $body_res = array();
