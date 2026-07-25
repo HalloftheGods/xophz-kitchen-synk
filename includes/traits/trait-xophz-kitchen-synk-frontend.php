@@ -270,4 +270,57 @@ trait Xophz_Kitchen_Synk_Frontend {
             exit;
         }
     }
+
+    public function inject_recipe_json_ld() {
+        if ( ! is_singular( 'ks_saved_recipe' ) ) {
+            return;
+        }
+
+        global $post;
+        
+        $prepTime = get_post_meta( $post->ID, 'prepTime', true );
+        $cookTime = get_post_meta( $post->ID, 'cookTime', true );
+        $calories = get_post_meta( $post->ID, 'caloriesPerServing', true );
+        $servings = get_post_meta( $post->ID, 'servings', true );
+        $instructions = get_post_meta( $post->ID, 'instructions', true );
+        
+        $instruction_steps = array();
+        if ( is_array( $instructions ) ) {
+            foreach ( $instructions as $step ) {
+                $instruction_steps[] = array(
+                    '@type' => 'HowToStep',
+                    'text'  => wp_strip_all_tags( is_array($step) && isset($step['text']) ? $step['text'] : (string) $step )
+                );
+            }
+        }
+        
+        $ingredients = array();
+        $usedExpiring = get_post_meta( $post->ID, 'usedExpiringItems', true );
+        $otherUsed = get_post_meta( $post->ID, 'otherUsedItems', true );
+        if ( is_array( $usedExpiring ) ) { $ingredients = array_merge($ingredients, $usedExpiring); }
+        if ( is_array( $otherUsed ) ) { $ingredients = array_merge($ingredients, $otherUsed); }
+
+        $schema = array(
+            '@context' => 'https://schema.org/',
+            '@type'    => 'Recipe',
+            'name'     => get_the_title( $post->ID ),
+            'image'    => get_the_post_thumbnail_url( $post->ID, 'full' ),
+            'description' => wp_strip_all_tags( $post->post_content ),
+            'recipeIngredient' => array_values( array_unique( $ingredients ) ),
+            'recipeInstructions' => $instruction_steps,
+        );
+
+        if ( $prepTime ) { $schema['prepTime'] = 'PT' . (int)$prepTime . 'M'; }
+        if ( $cookTime ) { $schema['cookTime'] = 'PT' . (int)$cookTime . 'M'; }
+        if ( $servings ) { $schema['recipeYield'] = (int)$servings; }
+        
+        if ( $calories ) {
+            $schema['nutrition'] = array(
+                '@type' => 'NutritionInformation',
+                'calories' => $calories . ' calories'
+            );
+        }
+
+        echo '<script type="application/ld+json">' . wp_json_encode( $schema ) . '</script>' . "\n";
+    }
 }

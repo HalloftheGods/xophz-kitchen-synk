@@ -103,9 +103,9 @@ class Xophz_Kitchen_Synk_API {
             'show_in_rest'        => true,
             'rest_base'           => 'ks-saved-recipes',
             'supports'            => array( 'title', 'editor', 'thumbnail', 'author', 'custom-fields' ),
-            'has_archive'         => false,
-            'exclude_from_search' => true,
-            'publicly_queryable'  => false,
+            'has_archive'         => true,
+            'exclude_from_search' => false,
+            'publicly_queryable'  => true,
         ) );
 
         register_post_type( 'ks_suggested_meal', array(

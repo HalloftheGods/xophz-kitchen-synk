@@ -51,6 +51,7 @@ class Xophz_Kitchen_Synk {
         add_action( 'init', array( $this, 'handle_api_request' ), 5 );
         add_action( 'template_redirect', array( $this, 'handle_api_request' ), 5 );
         add_action( 'template_redirect', array( $this, 'template_redirect' ) );
+        add_action( 'wp_head', array( $this, 'inject_recipe_json_ld' ) );
     }
 
     public function flush_rewrites_on_save( $old_value, $new_value ) {
