@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Xophz Kitchen Synk
  * Description:       Standalone WordPress backend and router for the Kitchen Synk web app.
- * Version:           26.7.25.374
+ * Version:           26.7.25.375
  * Author:            Hall of the Gods, Inc.
  * Category:          Command Deck
  * Group:             Ecosystem
