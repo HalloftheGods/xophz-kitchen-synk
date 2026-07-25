@@ -203,6 +203,32 @@ trait Xophz_Kitchen_Synk_API_Recipes {
             $recipe_data['otherUsedItems']    = get_post_meta( $post->ID, 'otherUsedItems', true );
         }
 
+        // Check if an image attachment already exists in WP Media for this dish title (Global Asset Recycling)
+        global $wpdb;
+        $title_slug = sanitize_title( $actual_title );
+        $existing_attach_id = $wpdb->get_var( $wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_name LIKE %s LIMIT 1",
+            $wpdb->esc_like( $title_slug ) . '%'
+        ) );
+
+        if ( $existing_attach_id ) {
+            $image_url = wp_get_attachment_url( $existing_attach_id );
+            if ( $image_url ) {
+                if ( $post ) {
+                    set_post_thumbnail( $post->ID, $existing_attach_id );
+                }
+                $target_id = $post ? $post->ID : $post_id;
+                return rest_ensure_response( array(
+                    'success'     => true,
+                    'recycled'    => true,
+                    'id'          => $target_id,
+                    'imageUrl'    => $image_url,
+                    'postUrl'     => $target_id ? get_permalink( $target_id ) : null,
+                    'postEditUrl' => $target_id ? get_edit_post_link( $target_id, 'raw' ) : null,
+                ) );
+            }
+        }
+
         $image_data = $this->fetch_recipe_image_data( $actual_title, $recipe_data );
         if ( ! $image_data ) {
             return new WP_Error( 'image_error', 'Could not generate or fetch recipe image.', array( 'status' => 500 ) );
