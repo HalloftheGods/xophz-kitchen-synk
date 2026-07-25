@@ -696,6 +696,7 @@ CRITICAL DIRECTIVES FOR RECIPE GENERATION:
             'success_url'             => $success_url,
             'cancel_url'              => $cancel_url,
             'metadata[user_type]'     => $tier,
+            'allow_promotion_codes'   => 'true',
         );
 
         if ( ! empty( $user_id ) && (int) $user_id > 0 ) {

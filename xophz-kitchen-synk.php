@@ -546,6 +546,7 @@ class Xophz_Kitchen_Synk {
                 . "loadMode: '" . esc_js( $load_mode ) . "', "
                 . "baseUrl: '" . esc_url_raw( $base_url ) . "', "
                 . "slug: '" . esc_js( $active_slug ) . "', "
+                . "phpVersion: '" . esc_js( PHP_VERSION ) . "', "
                 . "wpUser: " . wp_json_encode( $wp_user_data ) . " "
                 . "};</script>";
 
