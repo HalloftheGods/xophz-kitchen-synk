@@ -59,9 +59,27 @@ trait Xophz_Kitchen_Synk_API_Auth {
         }
 
         remove_filter( 'authenticate', 'wp_authenticate_application_password', 20 );
-        remove_all_filters( 'cfturnstile_authenticate' );
-        remove_all_filters( 'turnstile_authenticate' );
-
+        
+        // Dynamically strip any Turnstile checks from the authenticate filter since this is a REST API login
+        global $wp_filter;
+        if ( isset( $wp_filter['authenticate'] ) ) {
+            foreach ( $wp_filter['authenticate']->callbacks as $priority => $callbacks ) {
+                foreach ( $callbacks as $id => $callback ) {
+                    $is_turnstile = false;
+                    if ( is_array( $callback['function'] ) ) {
+                        $class_name = is_object( $callback['function'][0] ) ? get_class( $callback['function'][0] ) : (is_string($callback['function'][0]) ? $callback['function'][0] : '');
+                        if ( stripos( $class_name, 'turnstile' ) !== false ) {
+                            $is_turnstile = true;
+                        }
+                    } elseif ( is_string( $callback['function'] ) && stripos( $callback['function'], 'turnstile' ) !== false ) {
+                        $is_turnstile = true;
+                    }
+                    if ( $is_turnstile ) {
+                        remove_filter( 'authenticate', $callback['function'], $priority );
+                    }
+                }
+            }
+        }
         $creds = array(
             'user_login'    => $username,
             'user_password' => $password,
