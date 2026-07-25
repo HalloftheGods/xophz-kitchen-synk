@@ -130,12 +130,12 @@ trait Xophz_Kitchen_Synk_API_Recipes {
                 : "Served on a flat elegant ceramic plate"
             );
 
-        $ac_prompt = "Animal Crossing New Horizons food dish item icon, 3d game render of {$title}{$ing_clause} {$vessel}, cute stylized 3d game asset, isometric view, isolated on pure solid white background, no table, no wooden board, no trivet";
+        $ac_prompt = "A stylized mix of Animal Crossing New Horizons, Zelda Tears of the Kingdom, and real life photorealism food dish item icon, 3d game render of {$title}{$ing_clause} {$vessel}, cute yet highly detailed 3d game asset, isometric view, isolated on pure solid white background, no table, no wooden board, no trivet";
 
         $api_key = $this->get_api_key();
         if ( ! empty( $api_key ) ) {
             // Try Gemini Flash Image generation first
-            $model = 'gemini-2.0-flash';
+            $model = 'gemini-3.6-flash';
             $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $api_key;
             $body = array(
                 'contents' => array(

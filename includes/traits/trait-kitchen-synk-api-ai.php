@@ -126,9 +126,9 @@ The user has the following items in their refrigerator and pantry:
 
 CRITICAL DIRECTIVES FOR RECIPE GENERATION:
 1. HIGHEST PRIORITY: You MUST create recipes that incorporate as many EXPIRING SOON items (expiring in <= 3 days) as possible to prevent food waste!
-2. Create 5 to 6 distinct, appetizing, diverse recipes covering all meal categories (including Breakfast, Lunch, Dinner, and Quick Snacks/Appetizers) so the user has options for every meal planner slot. Ensure appropriate tags like 'Breakfast', 'Lunch', 'Dinner', or 'Snack' are included in dietaryTags.
+2. Create 5 to 6 distinct, appetizing, diverse recipes covering all meal categories (including Breakfast, Lunch, Dinner, and Quick Snacks/Appetizers) so the user has options for every meal planner slot. Ensure appropriate tags like 'Breakfast', 'Lunch', 'Dinner', or 'Snack' AND the specific Cuisine style (e.g. 'Italian', 'Mexican', 'Japanese', 'American') are included in dietaryTags.
 3. If Diabetic profile is enabled, mark recipes clearly with \"Diabetic Friendly\", \"Low GI\", or \"Keto\" tags and ensure they don't cause blood sugar spikes.
-4. Identify which ingredients from user inventory are used, and if any extra minor staple ingredients are missing, list them in missingIngredients.
+4. While most recipes should prioritize existing inventory, YOU MUST INCLUDE at least 1-2 aspirational recipes that require ENTIRELY NEW ingredients not currently in the user's inventory to inspire new grocery purchases and meals. List these missing ingredients clearly.
 5. Calculate a wasteSavingTip highlighting how much money or food this recipe saves.
 6. {$excludeSection}
 7. MANDATORY QUANTITY REQUIREMENT: Provide the exact required measurement/amount (e.g. '2 cups', '1 tbsp', '200g') for every item used in the recipe. Include a usedIngredientAmounts object mapping each used item name to its required amount.";

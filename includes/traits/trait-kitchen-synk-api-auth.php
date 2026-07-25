@@ -101,21 +101,31 @@ trait Kitchen_Synk_API_Auth_Trait {
             'first_name'   => $display_name,
         ) );
 
-        if ( $tier === 'starter' || $tier === 'free' || empty( $price_id ) ) {
-            if ( class_exists( 'Xophz_Compass_Golden_Keys_API' ) ) {
+        $ref_code = sanitize_text_field( $params['ref_code'] ?? $params['ref'] ?? '' );
+        $referred_reward_applied = false;
+        if ( ! empty( $ref_code ) ) {
+            $referred_reward_applied = $this->process_referral_reward( $user_id, $ref_code );
+        }
+
+        if ( $tier === 'starter' || $tier === 'free' || empty( $price_id ) || $referred_reward_applied ) {
+            if ( ! $referred_reward_applied && class_exists( 'Xophz_Compass_Golden_Keys_API' ) ) {
                 Xophz_Compass_Golden_Keys_API::generate_license_key( $user_id, 'starter' );
             }
             wp_set_current_user( $user_id );
             wp_set_auth_cookie( $user_id, true );
 
+            $active_tier = get_user_meta( $user_id, 'kitchensynk_user_type', true ) ?: 'starter';
+
             return rest_ensure_response( array(
-                'success'      => true,
-                'status'       => 'registered',
-                'user_id'      => $user_id,
-                'user'         => array(
+                'success'                 => true,
+                'status'                  => 'registered',
+                'user_id'                 => $user_id,
+                'referred_reward_applied' => $referred_reward_applied,
+                'user'                    => array(
                     'id'    => $user_id,
                     'name'  => $display_name,
                     'email' => $email,
+                    'tier'  => $active_tier,
                 ),
                 'redirect_url' => home_url( '/kitchen-synk/#/inventory?welcome=1' ),
             ) );
@@ -132,6 +142,121 @@ trait Kitchen_Synk_API_Auth_Trait {
             'user_id'      => $user_id,
             'checkout_url' => $session['url'],
             'session_id'   => $session['id'],
+        ) );
+    }
+
+    public function get_or_create_user_referral_code( $user_id ) {
+        if ( ! $user_id ) {
+            return '';
+        }
+        $code = get_user_meta( $user_id, 'ks_referral_code', true );
+        if ( empty( $code ) ) {
+            $user_obj = get_userdata( $user_id );
+            $login    = $user_obj ? strtolower( preg_replace( '/[^a-zA-Z0-9]/', '', $user_obj->user_login ) ) : 'chef';
+            $code     = $login . '-' . substr( md5( $user_id . 'ks_ref_salt' ), 0, 6 );
+            update_user_meta( $user_id, 'ks_referral_code', $code );
+        }
+        return $code;
+    }
+
+    private function get_user_by_referral_code( $ref_code ) {
+        if ( empty( $ref_code ) ) {
+            return 0;
+        }
+        $users = get_users( array(
+            'meta_key'   => 'ks_referral_code',
+            'meta_value' => sanitize_text_field( $ref_code ),
+            'number'     => 1,
+            'fields'     => 'ID',
+        ) );
+        if ( ! empty( $users ) ) {
+            return intval( $users[0] );
+        }
+        return 0;
+    }
+
+    private function process_referral_reward( $new_user_id, $ref_code ) {
+        if ( empty( $ref_code ) || empty( $new_user_id ) ) {
+            return false;
+        }
+
+        $referrer_id = $this->get_user_by_referral_code( $ref_code );
+        if ( ! $referrer_id || (int) $referrer_id === (int) $new_user_id ) {
+            return false;
+        }
+
+        update_user_meta( $new_user_id, 'ks_referred_by', $referrer_id );
+
+        update_user_meta( $new_user_id, 'kitchensynk_user_type', 'pro_chef' );
+        $referee_license = array(
+            'license_key' => 'GOLDEN-PRO-REF-' . strtoupper( bin2hex( random_bytes( 4 ) ) ),
+            'user_id'     => $new_user_id,
+            'tier'        => 'pro_chef',
+            'status'      => 'active',
+            'created_at'  => current_time( 'mysql' ),
+            'expires_at'  => date( 'Y-m-d H:i:s', strtotime( '+30 days' ) ),
+            'referred_by' => $referrer_id,
+        );
+        update_user_meta( $new_user_id, 'xophz_golden_license', $referee_license );
+
+        $list = get_user_meta( $referrer_id, 'ks_referrals_list', true );
+        if ( ! is_array( $list ) ) {
+            $list = array();
+        }
+        if ( ! in_array( $new_user_id, $list, true ) ) {
+            $list[] = $new_user_id;
+            update_user_meta( $referrer_id, 'ks_referrals_list', $list );
+        }
+
+        $bonus_months = (int) get_user_meta( $referrer_id, 'ks_bonus_months', true );
+        update_user_meta( $referrer_id, 'ks_bonus_months', $bonus_months + 1 );
+
+        $referrer_license = get_user_meta( $referrer_id, 'xophz_golden_license', true );
+        $base_expire = ( is_array( $referrer_license ) && ! empty( $referrer_license['expires_at'] ) && strtotime( $referrer_license['expires_at'] ) > time() )
+            ? strtotime( $referrer_license['expires_at'] )
+            : time();
+        $new_expire_date = date( 'Y-m-d H:i:s', strtotime( '+30 days', $base_expire ) );
+
+        if ( is_array( $referrer_license ) ) {
+            $referrer_license['expires_at'] = $new_expire_date;
+            $referrer_license['status']     = 'active';
+            update_user_meta( $referrer_id, 'xophz_golden_license', $referrer_license );
+        } else {
+            $new_ref_license = array(
+                'license_key' => 'GOLDEN-PRO-REF-' . strtoupper( bin2hex( random_bytes( 4 ) ) ),
+                'user_id'     => $referrer_id,
+                'tier'        => 'pro_chef',
+                'status'      => 'active',
+                'created_at'  => current_time( 'mysql' ),
+                'expires_at'  => $new_expire_date,
+            );
+            update_user_meta( $referrer_id, 'xophz_golden_license', $new_ref_license );
+            update_user_meta( $referrer_id, 'kitchensynk_user_type', 'pro_chef' );
+        }
+
+        return true;
+    }
+
+    public function rest_get_referral_info( WP_REST_Request $request ) {
+        $user_id = get_current_user_id();
+        if ( ! $user_id ) {
+            return new WP_Error( 'unauthorized', 'User is not logged in.', array( 'status' => 401 ) );
+        }
+
+        $code = $this->get_or_create_user_referral_code( $user_id );
+        $list = get_user_meta( $user_id, 'ks_referrals_list', true );
+        if ( ! is_array( $list ) ) {
+            $list = array();
+        }
+        $bonus_months = (int) get_user_meta( $user_id, 'ks_bonus_months', true );
+        $referral_url = home_url( '/kitchen-synk/#/?ref=' . rawurlencode( $code ) );
+
+        return rest_ensure_response( array(
+            'success'        => true,
+            'referral_code'  => $code,
+            'referral_link'  => $referral_url,
+            'referral_count' => count( $list ),
+            'bonus_months'   => $bonus_months,
         ) );
     }
 

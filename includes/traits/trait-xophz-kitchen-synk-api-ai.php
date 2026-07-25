@@ -131,8 +131,8 @@ trait Xophz_Kitchen_Synk_API_AI {
             )
         );
 
-        // Try gemini-2.0-flash first, fallback to gemini-1.5-flash
-        $models = array( 'gemini-2.0-flash', 'gemini-1.5-flash' );
+        // Try gemini-3.6-flash
+        $models = array( 'gemini-3.6-flash' );
         $response = null;
         $code = 0;
         $body_res = array();
@@ -352,7 +352,7 @@ trait Xophz_Kitchen_Synk_API_AI {
             )
         );
 
-        $models = array( 'gemini-2.0-flash', 'gemini-1.5-flash' );
+        $models = array( 'gemini-3.6-flash' );
         $response = null;
         $code = 0;
         $body_res = array();

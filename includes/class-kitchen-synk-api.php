@@ -128,5 +128,11 @@ class Kitchen_Synk_API {
             'callback'            => array( $this, 'rest_get_license' ),
             'permission_callback' => 'is_user_logged_in',
         ) );
+
+        register_rest_route( 'kitchen-synk/v1', '/referral', array(
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => array( $this, 'rest_get_referral_info' ),
+            'permission_callback' => 'is_user_logged_in',
+        ) );
     }
 }
