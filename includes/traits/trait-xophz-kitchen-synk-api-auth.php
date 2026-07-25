@@ -51,6 +51,17 @@ trait Xophz_Kitchen_Synk_API_Auth {
             return new WP_Error( 'missing_credentials', 'Username/Email and Password are required.', array( 'status' => 400 ) );
         }
 
+        if ( is_email( $username ) ) {
+            $user_obj = get_user_by( 'email', $username );
+            if ( $user_obj ) {
+                $username = $user_obj->user_login;
+            }
+        }
+
+        remove_filter( 'authenticate', 'wp_authenticate_application_password', 20 );
+        remove_all_filters( 'cfturnstile_authenticate' );
+        remove_all_filters( 'turnstile_authenticate' );
+
         $creds = array(
             'user_login'    => $username,
             'user_password' => $password,
