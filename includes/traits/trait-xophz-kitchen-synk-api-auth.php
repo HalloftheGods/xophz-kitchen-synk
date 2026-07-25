@@ -60,26 +60,38 @@ trait Xophz_Kitchen_Synk_API_Auth {
 
         remove_filter( 'authenticate', 'wp_authenticate_application_password', 20 );
         
-        // Dynamically strip any Turnstile checks from the authenticate filter since this is a REST API login
+        // Dynamically strip any CAPTCHA/Turnstile checks from the authenticate and wp_authenticate_user filters
         global $wp_filter;
-        if ( isset( $wp_filter['authenticate'] ) ) {
-            foreach ( $wp_filter['authenticate']->callbacks as $priority => $callbacks ) {
-                foreach ( $callbacks as $id => $callback ) {
-                    $is_turnstile = false;
-                    if ( is_array( $callback['function'] ) ) {
-                        $class_name = is_object( $callback['function'][0] ) ? get_class( $callback['function'][0] ) : (is_string($callback['function'][0]) ? $callback['function'][0] : '');
-                        if ( stripos( $class_name, 'turnstile' ) !== false ) {
-                            $is_turnstile = true;
+        $filters_to_clean = array( 'authenticate', 'wp_authenticate_user' );
+        foreach ( $filters_to_clean as $filter_name ) {
+            if ( isset( $wp_filter[ $filter_name ] ) ) {
+                foreach ( $wp_filter[ $filter_name ]->callbacks as $priority => $callbacks ) {
+                    foreach ( $callbacks as $id => $callback ) {
+                        $is_captcha = false;
+                        if ( is_array( $callback['function'] ) ) {
+                            $class_name  = is_object( $callback['function'][0] ) ? get_class( $callback['function'][0] ) : ( is_string( $callback['function'][0] ) ? $callback['function'][0] : '' );
+                            $method_name = is_string( $callback['function'][1] ) ? $callback['function'][1] : '';
+                            
+                            if ( stripos( $class_name, 'turnstile' ) !== false || stripos( $class_name, 'captcha' ) !== false || stripos( $class_name, 'wp_defender' ) !== false ) {
+                                $is_captcha = true;
+                            }
+                            if ( stripos( $method_name, 'turnstile' ) !== false || stripos( $method_name, 'captcha' ) !== false ) {
+                                $is_captcha = true;
+                            }
+                        } elseif ( is_string( $callback['function'] ) ) {
+                            if ( stripos( $callback['function'], 'turnstile' ) !== false || stripos( $callback['function'], 'captcha' ) !== false ) {
+                                $is_captcha = true;
+                            }
                         }
-                    } elseif ( is_string( $callback['function'] ) && stripos( $callback['function'], 'turnstile' ) !== false ) {
-                        $is_turnstile = true;
-                    }
-                    if ( $is_turnstile ) {
-                        remove_filter( 'authenticate', $callback['function'], $priority );
+                        
+                        if ( $is_captcha ) {
+                            remove_filter( $filter_name, $callback['function'], $priority );
+                        }
                     }
                 }
             }
         }
+
         $creds = array(
             'user_login'    => $username,
             'user_password' => $password,
