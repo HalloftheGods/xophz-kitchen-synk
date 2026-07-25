@@ -73,6 +73,85 @@ trait Kitchen_Synk_API_AI_Trait {
         return new WP_Error( 'gemini_error', 'Invalid response format from Gemini API.', array( 'status' => 500 ) );
     }
 
+    public function get_user_quota_info( $user_id = null ) {
+        if ( empty( $user_id ) ) {
+            $user_id = get_current_user_id() ?: 1;
+        }
+
+        $tier = get_user_meta( $user_id, 'kitchensynk_user_type', true ) ?: 'starter';
+        
+        $limits = array(
+            'starter'           => 3,
+            'free'              => 3,
+            'individual'        => 20,
+            'pro'               => 20,
+            'pro_chef'          => 20,
+            'family'            => 50,
+            'lifetime'          => 25,
+            'enterprise_pantry' => 50,
+            'commercial'        => 50,
+        );
+
+        $limit = isset( $limits[ $tier ] ) ? $limits[ $tier ] : 20;
+
+        $today = date( 'Y-m-d' );
+        $last_date = get_user_meta( $user_id, 'ks_ai_quota_date', true );
+        $used = (int) get_user_meta( $user_id, 'ks_ai_quota_used', true );
+
+        if ( $last_date !== $today ) {
+            $used = 0;
+            update_user_meta( $user_id, 'ks_ai_quota_date', $today );
+            update_user_meta( $user_id, 'ks_ai_quota_used', 0 );
+        }
+
+        return array(
+            'tier'      => $tier,
+            'limit'     => $limit,
+            'used'      => $used,
+            'remaining' => max( 0, $limit - $used ),
+            'reset'     => $today . ' 23:59:59',
+        );
+    }
+
+    public function check_and_increment_ai_quota( $user_id = null ) {
+        if ( empty( $user_id ) ) {
+            $user_id = get_current_user_id() ?: 1;
+        }
+
+        $info = $this->get_user_quota_info( $user_id );
+
+        if ( $info['used'] >= $info['limit'] ) {
+            return new WP_Error(
+                'ks_ai_quota_exceeded',
+                "Daily AI quota limit ({$info['limit']} requests/day) reached for tier '{$info['tier']}'. Please upgrade your subscription or wait for daily reset.",
+                array(
+                    'status' => 429,
+                    'data'   => array(
+                        'tier'      => $info['tier'],
+                        'limit'     => $info['limit'],
+                        'used'      => $info['used'],
+                        'remaining' => 0,
+                        'reset'     => $info['reset'],
+                    )
+                )
+            );
+        }
+
+        $new_used = $info['used'] + 1;
+        update_user_meta( $user_id, 'ks_ai_quota_used', $new_used );
+
+        $info['used'] = $new_used;
+        $info['remaining'] = max( 0, $info['limit'] - $new_used );
+
+        return $info;
+    }
+
+    public function get_ai_quota( WP_REST_Request $request ) {
+        $user_id = get_current_user_id() ?: 1;
+        $quota = $this->get_user_quota_info( $user_id );
+        return rest_ensure_response( array( 'success' => true, 'quota' => $quota ) );
+    }
+
     public function rest_generate_recipes( WP_REST_Request $request ) {
         $params = $request->get_json_params();
         return $this->handle_generate_recipes( $params );
@@ -89,6 +168,12 @@ trait Kitchen_Synk_API_AI_Trait {
 
         if ( empty( $items ) || ! is_array( $items ) ) {
             return new WP_REST_Response( array( 'error' => 'No inventory items provided for recipe creation' ), 400 );
+        }
+
+        $user_id = get_current_user_id() ?: 1;
+        $quota_res = $this->check_and_increment_ai_quota( $user_id );
+        if ( is_wp_error( $quota_res ) ) {
+            return $quota_res;
         }
 
         $itemSummaryLines = array();

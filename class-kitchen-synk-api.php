@@ -72,6 +72,12 @@ class Xophz_Kitchen_Synk_API {
             'callback'            => array( $this, 'regenerate_recipe_image' ),
             'permission_callback' => '__return_true',
         ) );
+
+        register_rest_route( 'kitchen-synk/v1', '/quota', array(
+            'methods'             => 'GET',
+            'callback'            => array( $this, 'get_ai_quota' ),
+            'permission_callback' => '__return_true',
+        ) );
     }
 
     public function register_post_types() {

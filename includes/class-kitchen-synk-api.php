@@ -49,6 +49,12 @@ class Kitchen_Synk_API {
             'permission_callback' => '__return_true',
         ) );
 
+        register_rest_route( 'kitchen-synk/v1', '/quota', array(
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => array( $this, 'get_ai_quota' ),
+            'permission_callback' => '__return_true',
+        ) );
+
         register_rest_route( 'kitchen-synk/v1', '/connectors/stripe', array(
             array(
                 'methods'             => WP_REST_Server::READABLE,

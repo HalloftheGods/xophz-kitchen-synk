@@ -35,6 +35,85 @@ trait Xophz_Kitchen_Synk_API_AI {
         return get_option( 'gemini_api_key', '' );
     }
 
+    public function get_user_quota_info( $user_id = null ) {
+        if ( empty( $user_id ) ) {
+            $user_id = get_current_user_id() ?: 1;
+        }
+
+        $tier = get_user_meta( $user_id, 'kitchensynk_user_type', true ) ?: 'starter';
+        
+        $limits = array(
+            'starter'           => 3,
+            'free'              => 3,
+            'individual'        => 20,
+            'pro'               => 20,
+            'pro_chef'          => 20,
+            'family'            => 50,
+            'lifetime'          => 25,
+            'enterprise_pantry' => 50,
+            'commercial'        => 50,
+        );
+
+        $limit = isset( $limits[ $tier ] ) ? $limits[ $tier ] : 20;
+
+        $today = date( 'Y-m-d' );
+        $last_date = get_user_meta( $user_id, 'ks_ai_quota_date', true );
+        $used = (int) get_user_meta( $user_id, 'ks_ai_quota_used', true );
+
+        if ( $last_date !== $today ) {
+            $used = 0;
+            update_user_meta( $user_id, 'ks_ai_quota_date', $today );
+            update_user_meta( $user_id, 'ks_ai_quota_used', 0 );
+        }
+
+        return array(
+            'tier'      => $tier,
+            'limit'     => $limit,
+            'used'      => $used,
+            'remaining' => max( 0, $limit - $used ),
+            'reset'     => $today . ' 23:59:59',
+        );
+    }
+
+    public function check_and_increment_ai_quota( $user_id = null ) {
+        if ( empty( $user_id ) ) {
+            $user_id = get_current_user_id() ?: 1;
+        }
+
+        $info = $this->get_user_quota_info( $user_id );
+
+        if ( $info['used'] >= $info['limit'] ) {
+            return new WP_Error(
+                'ks_ai_quota_exceeded',
+                "Daily AI quota limit ({$info['limit']} requests/day) reached for tier '{$info['tier']}'. Please upgrade your subscription or wait for daily reset.",
+                array(
+                    'status' => 429,
+                    'data'   => array(
+                        'tier'      => $info['tier'],
+                        'limit'     => $info['limit'],
+                        'used'      => $info['used'],
+                        'remaining' => 0,
+                        'reset'     => $info['reset'],
+                    )
+                )
+            );
+        }
+
+        $new_used = $info['used'] + 1;
+        update_user_meta( $user_id, 'ks_ai_quota_used', $new_used );
+
+        $info['used'] = $new_used;
+        $info['remaining'] = max( 0, $info['limit'] - $new_used );
+
+        return $info;
+    }
+
+    public function get_ai_quota( WP_REST_Request $request ) {
+        $user_id = get_current_user_id() ?: 1;
+        $quota = $this->get_user_quota_info( $user_id );
+        return rest_ensure_response( array( 'success' => true, 'quota' => $quota ) );
+    }
+
     public function generate_recipes( WP_REST_Request $request ) {
         $api_key = $this->get_api_key();
         if ( empty( $api_key ) ) {
@@ -48,23 +127,50 @@ trait Xophz_Kitchen_Synk_API_AI {
         $custom = $params['customRequest'] ?? '';
         $profile = $params['userProfile'] ?? array();
 
+        $raw_names = array_map(function($i) {
+            return is_array($i) && isset($i['name']) ? trim($i['name']) : (is_string($i) ? trim($i) : '');
+        }, $items);
+        $item_names = array_values( array_unique( array_filter( $raw_names ) ) );
+
+        $user_id = get_current_user_id() ?: 1;
+
+        // Check 4-hour transient cache for identical request payload
+        $cache_payload = array(
+            'items'   => $item_names,
+            'dietary' => $dietary,
+            'maxPrep' => $maxPrep,
+            'custom'  => $custom,
+        );
+        $cache_key = 'ks_recipes_' . md5( wp_json_encode( $cache_payload ) );
+        $cached_recipes = get_transient( $cache_key );
+
+        if ( ! empty( $cached_recipes ) && is_array( $cached_recipes ) ) {
+            $quota_info = $this->get_user_quota_info( $user_id );
+            return rest_ensure_response( array(
+                'recipes' => $cached_recipes,
+                'cached'  => true,
+                'quota'   => $quota_info,
+            ) );
+        }
+
+        // Server-enforced daily rate limit quota check
+        $quota_res = $this->check_and_increment_ai_quota( $user_id );
+        if ( is_wp_error( $quota_res ) ) {
+            return $quota_res;
+        }
+
         // Get past suggestions for context
         $history_args = array(
             'post_type'      => 'ks_suggested_meal',
             'posts_per_page' => 10,
             'post_status'    => 'publish',
-            'author'         => get_current_user_id() ?: 1, // Fallback to 1 if not logged in
+            'author'         => $user_id,
         );
         $past_posts = get_posts( $history_args );
         $past_titles = array();
         foreach ( $past_posts as $p ) {
             $past_titles[] = $p->post_title;
         }
-
-        $raw_names = array_map(function($i) {
-            return is_array($i) && isset($i['name']) ? trim($i['name']) : (is_string($i) ? trim($i) : '');
-        }, $items);
-        $item_names = array_values( array_unique( array_filter( $raw_names ) ) );
 
         $prompt = "You are a zero-waste culinary AI expert named Xophz-COMPASS. Generate 5 to 6 unique recipes, including a mix of full meals, snacks, and drinks.\n";
         $prompt .= "Available Inventory: " . json_encode($items) . "\n";
@@ -256,7 +362,14 @@ trait Xophz_Kitchen_Synk_API_AI {
             }
         }
 
-        return rest_ensure_response( array( 'recipes' => $recipes ) );
+        // Save generated recipes to 4-hour transient cache
+        set_transient( $cache_key, $recipes, 4 * HOUR_IN_SECONDS );
+
+        return rest_ensure_response( array(
+            'recipes' => $recipes,
+            'cached'  => false,
+            'quota'   => is_array( $quota_res ) ? $quota_res : $this->get_user_quota_info( $user_id ),
+        ) );
     }
 
     private function generate_fallback_recipes( $items, $dietary = array(), $maxPrep = 45, $custom = '', $profile = array() ) {
@@ -327,7 +440,10 @@ trait Xophz_Kitchen_Synk_API_AI {
     }
 
     public function generate_meal_plan( WP_REST_Request $request ) {
-        $api_key = get_option( 'ks_gemini_api_key', '' );
+        $api_key = $this->get_api_key();
+        if ( empty( $api_key ) ) {
+            $api_key = get_option( 'ks_gemini_api_key', '' );
+        }
         if ( empty( $api_key ) ) {
             return new WP_Error( 'missing_api_key', 'Gemini API Key is not set in Kitchen Synk plugin settings.', array( 'status' => 400 ) );
         }
@@ -337,6 +453,33 @@ trait Xophz_Kitchen_Synk_API_AI {
         $dietary  = $params['dietaryPreferences'] ?? array();
         $slots    = $params['slots'] ?? array('Breakfast', 'Lunch', 'Dinner', 'Snack');
         $days     = $params['days'] ?? array('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday');
+
+        $user_id = get_current_user_id() ?: 1;
+
+        // Check 6-hour transient cache for identical meal plan request
+        $cache_payload = array(
+            'items'   => $items,
+            'dietary' => $dietary,
+            'slots'   => $slots,
+            'days'    => $days,
+        );
+        $cache_key = 'ks_plan_' . md5( wp_json_encode( $cache_payload ) );
+        $cached_plan = get_transient( $cache_key );
+
+        if ( ! empty( $cached_plan ) && is_array( $cached_plan ) ) {
+            $quota_info = $this->get_user_quota_info( $user_id );
+            return rest_ensure_response( array(
+                'entries' => $cached_plan,
+                'cached'  => true,
+                'quota'   => $quota_info,
+            ) );
+        }
+
+        // Check server-side daily quota
+        $quota_res = $this->check_and_increment_ai_quota( $user_id );
+        if ( is_wp_error( $quota_res ) ) {
+            return $quota_res;
+        }
 
         $prompt  = "You are a zero-waste culinary AI expert named Xophz-COMPASS. Generate a weekly meal plan.\n";
         $prompt .= "Target Days: " . implode(', ', $days) . "\n";
@@ -404,6 +547,13 @@ trait Xophz_Kitchen_Synk_API_AI {
             return new WP_Error( 'json_parse_error', 'Failed to parse JSON from AI: ' . substr($raw_text, 0, 200), array( 'status' => 500 ) );
         }
 
-        return rest_ensure_response( array( 'entries' => $entries ) );
+        // Cache meal plan in 6-hour transient cache
+        set_transient( $cache_key, $entries, 6 * HOUR_IN_SECONDS );
+
+        return rest_ensure_response( array(
+            'entries' => $entries,
+            'cached'  => false,
+            'quota'   => is_array( $quota_res ) ? $quota_res : $this->get_user_quota_info( $user_id ),
+        ) );
     }
 }
