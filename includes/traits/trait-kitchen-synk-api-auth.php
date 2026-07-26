@@ -249,7 +249,7 @@ trait Kitchen_Synk_API_Auth_Trait {
             $list = array();
         }
         $bonus_months = (int) get_user_meta( $user_id, 'ks_bonus_months', true );
-        $referral_url = home_url( '/kitchen-synk/#/?ref=' . rawurlencode( $code ) );
+        $referral_url = xophz_kitchen_synk_get_base_url( '?ref=' . rawurlencode( $code ) );
 
         return rest_ensure_response( array(
             'success'        => true,

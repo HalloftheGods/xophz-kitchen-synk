@@ -19,6 +19,29 @@ define( 'XOPHZ_KITCHEN_SYNK_VERSION', '26.7.25.552' );
 define( 'XOPHZ_KITCHEN_SYNK_PATH', plugin_dir_path( __FILE__ ) );
 define( 'XOPHZ_KITCHEN_SYNK_URL', plugin_dir_url( __FILE__ ) );
 
+if ( ! function_exists( 'xophz_kitchen_synk_get_base_url' ) ) {
+    function xophz_kitchen_synk_get_base_url( $path = '', $custom_slug = '' ) {
+        $load_mode = get_option( 'xophz_kitchen_synk_load_mode', 'custom_slug' );
+        $slug      = ! empty( $custom_slug ) ? $custom_slug : get_option( 'xophz_kitchen_synk_custom_slug', 'kitchen-synk' );
+        $slug      = ! empty( $slug ) ? $slug : 'kitchen-synk';
+
+        if ( 'homepage' === $load_mode && empty( $custom_slug ) ) {
+            $base_url = home_url( '/' );
+        } elseif ( 'specific_page' === $load_mode && empty( $custom_slug ) ) {
+            $page_id = (int) get_option( 'xophz_kitchen_synk_load_page_id', 0 );
+            if ( $page_id > 0 ) {
+                $base_url = trailingslashit( get_permalink( $page_id ) );
+            } else {
+                $base_url = home_url( '/' . $slug . '/' );
+            }
+        } else {
+            $base_url = home_url( '/' . $slug . '/' );
+        }
+
+        return $base_url . ltrim( $path, '/' );
+    }
+}
+
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'class-kitchen-synk-api.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/class-kitchen-synk-api.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-xophz-kitchen-synk-admin.php';
