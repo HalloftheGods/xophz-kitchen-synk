@@ -65,7 +65,7 @@ trait Xophz_Kitchen_Synk_Frontend {
         if ( ( defined( 'WP_ENV' ) && WP_ENV === 'development' ) || ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ) {
             return true;
         }
-        $connection = @fsockopen( 'compass', 3005, $errno, $errstr, 1 );
+        $connection = @fsockopen( 'compass', 8084, $errno, $errstr, 1 );
         if ( is_resource( $connection ) ) {
             fclose( $connection );
             return true;
@@ -91,7 +91,7 @@ trait Xophz_Kitchen_Synk_Frontend {
             $active_slug = $is_force_prod ? 'kitchen-synk-prod' : $slug;
             $is_dev      = $is_force_prod ? false : $this->is_dev_mode();
 
-            $vite_port = '3005';
+            $vite_port = '8084';
             if ( isset( $_SERVER['HTTP_HOST'] ) ) {
                 $host_parts = explode( ':', $_SERVER['HTTP_HOST'] );
                 $wp_host    = $host_parts[0];

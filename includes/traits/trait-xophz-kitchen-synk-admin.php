@@ -204,7 +204,7 @@ trait Xophz_Kitchen_Synk_Admin {
                     <ul style="line-height: 1.8;">
                         <li><strong>Active Portal Endpoint:</strong> <a href="<?php echo esc_url( $app_url ); ?>" target="_blank"><code><?php echo esc_html( $app_url ); ?></code></a></li>
                         <li><strong>Local Production Test Endpoint:</strong> <a href="<?php echo esc_url( $prod_app_url ); ?>" target="_blank"><code><?php echo esc_html( $prod_app_url ); ?></code></a></li>
-                        <li><strong>Server Environment:</strong> <?php echo $is_dev ? '<span style="color:#d97706;font-weight:bold;">⚡ Vite Dev Mode (Port 3005)</span>' : '<span style="color:#16a34a;font-weight:bold;">📦 Production Static Bundle</span>'; ?></li>
+                        <li><strong>Server Environment:</strong> <?php echo $is_dev ? '<span style="color:#d97706;font-weight:bold;">⚡ Vite Dev Mode (Port 8084)</span>' : '<span style="color:#16a34a;font-weight:bold;">📦 Production Static Bundle</span>'; ?></li>
                         <li><strong>REST API Namespace:</strong> <code><?php echo esc_url( rest_url( 'kitchen-synk/v1/' ) ); ?></code></li>
                     </ul>
                 </div>
