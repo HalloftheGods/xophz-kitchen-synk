@@ -7,6 +7,16 @@ if ( ! defined( 'WPINC' ) ) {
 trait Kitchen_Synk_API_AI_Trait {
 
     private function get_gemini_key() {
+        if ( function_exists( 'wp_get_connectors' ) ) {
+            $connectors = wp_get_connectors();
+            if ( ! empty( $connectors['google']['authentication']['setting_name'] ) ) {
+                $api_key = get_option( $connectors['google']['authentication']['setting_name'], '' );
+                if ( ! empty( $api_key ) ) {
+                    return $api_key;
+                }
+            }
+        }
+        
         $official_key = get_option( 'connectors_ai_google_api_key' );
         if ( ! empty( $official_key ) ) {
             return $official_key;
@@ -22,13 +32,27 @@ trait Kitchen_Synk_API_AI_Trait {
         return '';
     }
 
+    private function get_gemini_model() {
+        if ( function_exists( 'wp_get_connectors' ) ) {
+            $connectors = wp_get_connectors();
+            if ( ! empty( $connectors['google']['options']['model']['setting_name'] ) ) {
+                $model = get_option( $connectors['google']['options']['model']['setting_name'], '' );
+                if ( ! empty( $model ) ) {
+                    return $model;
+                }
+            }
+        }
+        return 'gemini-3.6-flash';
+    }
+
     private function call_gemini( $contents, $schema = null ) {
         $api_key = $this->get_gemini_key();
         if ( empty( $api_key ) ) {
             return new WP_Error( 'no_api_key', 'GEMINI_API_KEY is not configured on the server.', array( 'status' => 500 ) );
         }
 
-        $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=' . $api_key;
+        $model = $this->get_gemini_model();
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . $model . ':generateContent?key=' . $api_key;
 
         $body = array(
             'contents' => $contents,

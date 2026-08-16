@@ -35,6 +35,19 @@ trait Xophz_Kitchen_Synk_API_AI {
         return get_option( 'gemini_api_key', '' );
     }
 
+    private function get_gemini_model() {
+        if ( function_exists( 'wp_get_connectors' ) ) {
+            $connectors = wp_get_connectors();
+            if ( ! empty( $connectors['google']['options']['model']['setting_name'] ) ) {
+                $model = get_option( $connectors['google']['options']['model']['setting_name'], '' );
+                if ( ! empty( $model ) ) {
+                    return $model;
+                }
+            }
+        }
+        return 'gemini-3.6-flash';
+    }
+
     public function get_user_quota_info( $user_id = null ) {
         if ( empty( $user_id ) ) {
             $user_id = get_current_user_id() ?: 1;
@@ -237,17 +250,15 @@ trait Xophz_Kitchen_Synk_API_AI {
             )
         );
 
-        // Try gemini-3.6-flash
-        $models = array( 'gemini-3.6-flash' );
+        $model = $this->get_gemini_model();
         $response = null;
         $code = 0;
         $body_res = array();
         $last_err_msg = '';
 
-        foreach ( $models as $model ) {
-            $gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $api_key;
-            
-            $res = wp_remote_post( $gemini_url, array(
+        $gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $api_key;
+        
+        $res = wp_remote_post( $gemini_url, array(
                 'headers' => array( 'Content-Type' => 'application/json' ),
                 'body'    => wp_json_encode( $body ),
                 'timeout' => 30,
@@ -255,26 +266,23 @@ trait Xophz_Kitchen_Synk_API_AI {
 
             if ( is_wp_error( $res ) ) {
                 $last_err_msg = $res->get_error_message();
-                continue;
-            }
-
-            $c = wp_remote_retrieve_response_code( $res );
-            $b = json_decode( wp_remote_retrieve_body( $res ), true );
-
-            if ( $c === 200 && ! empty( $b['candidates'][0]['content']['parts'][0]['text'] ) ) {
-                $response = $res;
-                $code = $c;
-                $body_res = $b;
-                break;
-            }
-
-            if ( ! empty( $b['error']['message'] ) ) {
-                $msg = $b['error']['message'];
-                $last_err_msg = "Model {$model} error ({$c}): " . $msg;
             } else {
-                $last_err_msg = "Model {$model} returned status {$c}";
+                $c = wp_remote_retrieve_response_code( $res );
+                $b = json_decode( wp_remote_retrieve_body( $res ), true );
+
+                if ( $c === 200 && ! empty( $b['candidates'][0]['content']['parts'][0]['text'] ) ) {
+                    $response = $res;
+                    $code = $c;
+                    $body_res = $b;
+                } else {
+                    if ( ! empty( $b['error']['message'] ) ) {
+                        $msg = $b['error']['message'];
+                        $last_err_msg = "Model {$model} error ({$c}): " . $msg;
+                    } else {
+                        $last_err_msg = "Model {$model} returned status {$c}";
+                    }
+                }
             }
-        }
 
         if ( $code !== 200 || empty( $body_res['candidates'][0]['content']['parts'][0]['text'] ) ) {
             $is_rate_limit = ( $code === 429 ) || ( stripos( $last_err_msg, 'quota' ) !== false ) || ( stripos( $last_err_msg, 'rate limit' ) !== false );
@@ -495,26 +503,23 @@ trait Xophz_Kitchen_Synk_API_AI {
             )
         );
 
-        $models = array( 'gemini-3.6-flash' );
+        $model = $this->get_gemini_model();
         $response = null;
         $code = 0;
         $body_res = array();
         $last_err_msg = '';
 
-        foreach ( $models as $model ) {
-            $gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $api_key;
-            
-            $res = wp_remote_post( $gemini_url, array(
-                'headers' => array( 'Content-Type' => 'application/json' ),
-                'body'    => wp_json_encode( $body ),
-                'timeout' => 35,
-            ) );
+        $gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $api_key;
+        
+        $res = wp_remote_post( $gemini_url, array(
+            'headers' => array( 'Content-Type' => 'application/json' ),
+            'body'    => wp_json_encode( $body ),
+            'timeout' => 35,
+        ) );
 
-            if ( is_wp_error( $res ) ) {
-                $last_err_msg = $res->get_error_message();
-                continue;
-            }
-
+        if ( is_wp_error( $res ) ) {
+            $last_err_msg = $res->get_error_message();
+        } else {
             $c = wp_remote_retrieve_response_code( $res );
             $b = json_decode( wp_remote_retrieve_body( $res ), true );
 
@@ -522,13 +527,12 @@ trait Xophz_Kitchen_Synk_API_AI {
                 $response = $res;
                 $code = $c;
                 $body_res = $b;
-                break;
-            }
-
-            if ( ! empty( $b['error']['message'] ) ) {
-                $last_err_msg = "Model {$model} error ({$c}): " . $b['error']['message'];
             } else {
-                $last_err_msg = "Model {$model} returned status {$c}";
+                if ( ! empty( $b['error']['message'] ) ) {
+                    $last_err_msg = "Model {$model} error ({$c}): " . $b['error']['message'];
+                } else {
+                    $last_err_msg = "Model {$model} returned status {$c}";
+                }
             }
         }
 

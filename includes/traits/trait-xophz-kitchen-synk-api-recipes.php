@@ -135,7 +135,7 @@ trait Xophz_Kitchen_Synk_API_Recipes {
         $api_key = $this->get_api_key();
         if ( ! empty( $api_key ) ) {
             // Try Gemini Flash Image generation first
-            $model = 'gemini-3.6-flash';
+            $model = $this->get_gemini_model();
             $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $api_key;
             $body = array(
                 'contents' => array(
