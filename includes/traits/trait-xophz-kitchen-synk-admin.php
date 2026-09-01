@@ -145,7 +145,7 @@ trait Xophz_Kitchen_Synk_Admin {
                                 <fieldset>
                                     <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
                                         <input type="radio" name="xophz_kitchen_synk_load_mode" value="custom_slug" <?php checked( $load_mode, 'custom_slug' ); ?> />
-                                        <strong>Custom Slug</strong> — Load on a specific URL path
+                                        <strong>Custom Slug</strong> - Load on a specific URL path
                                     </label>
                                     <div id="slug_input_container" style="margin-left: 28px; margin-bottom: 16px;">
                                         <code><?php echo esc_url( home_url( '/' ) ); ?></code>
@@ -156,7 +156,7 @@ trait Xophz_Kitchen_Synk_Admin {
 
                                     <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
                                         <input type="radio" name="xophz_kitchen_synk_load_mode" value="homepage" <?php checked( $load_mode, 'homepage' ); ?> />
-                                        <strong>Homepage Mode</strong> — Set Kitchen Synk as the site's main front page (<code>/</code>)
+                                        <strong>Homepage Mode</strong> - Set Kitchen Synk as the site's main front page (<code>/</code>)
                                     </label>
                                     <p class="description" style="margin-left: 28px; margin-bottom: 16px;">
                                         Replaces your WordPress landing page with the complete Kitchen Synk experience.
@@ -164,7 +164,7 @@ trait Xophz_Kitchen_Synk_Admin {
 
                                     <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
                                         <input type="radio" name="xophz_kitchen_synk_load_mode" value="specific_page" <?php checked( $load_mode, 'specific_page' ); ?> />
-                                        <strong>Target Page</strong> — Load on a specific WordPress Page
+                                        <strong>Target Page</strong> - Load on a specific WordPress Page
                                     </label>
                                     <div id="page_dropdown_container" style="margin-left: 28px; margin-bottom: 16px;">
                                         <?php
@@ -172,7 +172,7 @@ trait Xophz_Kitchen_Synk_Admin {
                                             'name'              => 'xophz_kitchen_synk_load_page_id',
                                             'id'                => 'xophz_kitchen_synk_load_page_id',
                                             'selected'          => $page_id,
-                                            'show_option_none'  => '— Select a Page —',
+                                            'show_option_none'  => '- Select a Page -',
                                             'option_none_value' => '0',
                                         ) );
                                         ?>
