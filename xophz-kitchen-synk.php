@@ -217,3 +217,13 @@ function xophz_kitchen_synk_activate() {
     flush_rewrite_rules();
 }
 register_activation_hook( __FILE__, 'xophz_kitchen_synk_activate' );
+
+function xophz_kitchen_synk_action_links( $links ) {
+    $settings_link = '<a href="options-general.php?page=xophz-kitchen-synk">' . __( 'Settings', 'xophz-kitchen-synk' ) . '</a>';
+    $new_links = array( 'settings' => $settings_link );
+    foreach ( $links as $key => $value ) {
+        $new_links[ $key ] = $value;
+    }
+    return $new_links;
+}
+add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), 'xophz_kitchen_synk_action_links' );
