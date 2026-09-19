@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       Xophz Kitchen Synk
- * Plugin URI:        https://github.com/HalloftheGods/xophz-kitchen-synk
+ * Plugin URI:        https://kitchensynk.app
  * Description:       Standalone WordPress backend and router for the Kitchen Synk web app.
  * Version:           26.9.17
  * Author:            Hall of the Gods, Inc.
