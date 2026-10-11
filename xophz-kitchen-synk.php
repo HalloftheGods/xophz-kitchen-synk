@@ -42,6 +42,8 @@ if ( ! function_exists( 'xophz_kitchen_synk_get_base_url' ) ) {
     }
 }
 
+require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/class-kitchen-synk-connectors.php';
+Kitchen_Synk_Connectors::init();
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'class-kitchen-synk-api.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/class-kitchen-synk-api.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-xophz-kitchen-synk-admin.php';

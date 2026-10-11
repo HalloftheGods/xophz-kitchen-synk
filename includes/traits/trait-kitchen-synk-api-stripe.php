@@ -6,30 +6,37 @@ if ( ! defined( 'WPINC' ) ) {
 
 trait Kitchen_Synk_API_Stripe_Trait {
 
+    /**
+     * Non-secret Stripe settings plus configured flags. The secret key and the webhook signing
+     * secret live in Settings > Connectors and are never returned by this route.
+     */
     public function rest_get_stripe_keys( WP_REST_Request $request ) {
-        $keys = get_option( 'xophz_stripe_keys', array(
-            'publishable_key' => '',
-            'secret_key'      => '',
-            'webhook_secret'  => '',
-            'mode'            => 'test',
+        $config = get_option( 'xophz_stripe_keys', array() );
+        $config = is_array( $config ) ? $config : array();
+        $secret = Kitchen_Synk_Connectors::stripe_secret_key();
+
+        return rest_ensure_response( array(
+            'publishable_key'           => (string) ( $config['publishable_key'] ?? '' ),
+            'mode'                      => (string) ( $config['mode'] ?? 'test' ),
+            'secret_key_configured'     => '' !== $secret,
+            'secret_key_masked'         => '' !== $secret ? '••••' . substr( $secret, -4 ) : '',
+            'webhook_secret_configured' => '' !== Kitchen_Synk_Connectors::stripe_webhook_secret(),
         ) );
-        $keys['secret_key_masked'] = ! empty( $keys['secret_key'] ) ? '••••' . substr( $keys['secret_key'], -4 ) : '';
-        return rest_ensure_response( $keys );
     }
 
+    /** Saves the non-secret Stripe settings only. Secrets are written through Settings > Connectors. */
     public function rest_save_stripe_keys( WP_REST_Request $request ) {
         $params   = $request->get_json_params();
         $existing = get_option( 'xophz_stripe_keys', array() );
+        $existing = is_array( $existing ) ? $existing : array();
 
         $updated = array(
             'publishable_key' => sanitize_text_field( $params['publishable_key'] ?? $existing['publishable_key'] ?? '' ),
-            'secret_key'      => ! empty( $params['secret_key'] ) ? sanitize_text_field( $params['secret_key'] ) : ( $existing['secret_key'] ?? '' ),
-            'webhook_secret'  => ! empty( $params['webhook_secret'] ) ? sanitize_text_field( $params['webhook_secret'] ) : ( $existing['webhook_secret'] ?? '' ),
             'mode'            => sanitize_text_field( $params['mode'] ?? 'test' ),
         );
 
         update_option( 'xophz_stripe_keys', $updated );
-        return rest_ensure_response( array( 'success' => true, 'message' => 'Stripe connector keys updated successfully.' ) );
+        return rest_ensure_response( array( 'success' => true, 'message' => 'Stripe settings updated. Set the secret key and webhook secret under Settings > Connectors.' ) );
     }
 
     public function rest_create_checkout_session( WP_REST_Request $request ) {
@@ -57,7 +64,7 @@ trait Kitchen_Synk_API_Stripe_Trait {
     }
 
     private function create_stripe_checkout_session( $user_id, $email, $tier, $price_id ) {
-        $secret_key = get_option( 'compass_stripe_secret_key', '' );
+        $secret_key = Kitchen_Synk_Connectors::stripe_secret_key();
 
         if ( empty( $secret_key ) ) {
             return new WP_Error( 'stripe_missing_keys', 'Stripe secret key is not configured in WP Connector.', array( 'status' => 500 ) );
@@ -130,7 +137,7 @@ trait Kitchen_Synk_API_Stripe_Trait {
             return new WP_Error( 'missing_session_id', 'Stripe Session ID is required.', array( 'status' => 400 ) );
         }
 
-        $secret_key = get_option( 'compass_stripe_secret_key', '' );
+        $secret_key = Kitchen_Synk_Connectors::stripe_secret_key();
 
         if ( empty( $secret_key ) ) {
             return new WP_Error( 'stripe_missing_keys', 'Stripe secret key is not configured.', array( 'status' => 500 ) );
@@ -225,8 +232,7 @@ trait Kitchen_Synk_API_Stripe_Trait {
             return new WP_Error( 'invalid_payload', 'Invalid webhook JSON payload.', array( 'status' => 400 ) );
         }
 
-        $keys = get_option( 'xophz_stripe_keys', array() );
-        $webhook_secret = $keys['webhook_secret'] ?? '';
+        $webhook_secret = Kitchen_Synk_Connectors::stripe_webhook_secret();
         $signature_header = $request->get_header( 'stripe_signature' );
 
         if ( ! empty( $webhook_secret ) ) {

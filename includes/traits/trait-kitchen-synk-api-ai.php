@@ -7,29 +7,7 @@ if ( ! defined( 'WPINC' ) ) {
 trait Kitchen_Synk_API_AI_Trait {
 
     private function get_gemini_key() {
-        if ( function_exists( 'wp_get_connectors' ) ) {
-            $connectors = wp_get_connectors();
-            if ( ! empty( $connectors['google']['authentication']['setting_name'] ) ) {
-                $api_key = get_option( $connectors['google']['authentication']['setting_name'], '' );
-                if ( ! empty( $api_key ) ) {
-                    return $api_key;
-                }
-            }
-        }
-        
-        $official_key = get_option( 'connectors_ai_google_api_key' );
-        if ( ! empty( $official_key ) ) {
-            return $official_key;
-        }
-
-        $key = getenv( 'GEMINI_API_KEY' );
-        if ( ! empty( $key ) ) {
-            return $key;
-        }
-        if ( defined( 'GEMINI_API_KEY' ) && ! empty( GEMINI_API_KEY ) ) {
-            return GEMINI_API_KEY;
-        }
-        return '';
+        return Kitchen_Synk_Connectors::gemini_key();
     }
 
     private function get_gemini_model() {
@@ -48,11 +26,11 @@ trait Kitchen_Synk_API_AI_Trait {
     private function call_gemini( $contents, $schema = null ) {
         $api_key = $this->get_gemini_key();
         if ( empty( $api_key ) ) {
-            return new WP_Error( 'no_api_key', 'GEMINI_API_KEY is not configured on the server.', array( 'status' => 500 ) );
+            return new WP_Error( 'no_api_key', 'Gemini API key is not configured. Add the Google key under Settings > Connectors.', array( 'status' => 500 ) );
         }
 
         $model = $this->get_gemini_model();
-        $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . $model . ':generateContent?key=' . $api_key;
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . $model . ':generateContent';
 
         $body = array(
             'contents' => $contents,
@@ -66,10 +44,7 @@ trait Kitchen_Synk_API_AI_Trait {
         }
 
         $response = wp_remote_post( $url, array(
-            'headers'     => array(
-                'Content-Type' => 'application/json',
-                'User-Agent'   => 'aistudio-build',
-            ),
+            'headers'     => Kitchen_Synk_Connectors::gemini_headers( $api_key, array( 'User-Agent' => 'aistudio-build' ) ),
             'body'        => wp_json_encode( $body ),
             'method'      => 'POST',
             'data_format' => 'body',

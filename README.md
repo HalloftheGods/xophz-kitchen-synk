@@ -31,6 +31,18 @@ It bridges the frontend application (`apps/kitchen-synk`) with the WordPress bac
 3. Toggle the **Admin Bar Menu** checkbox for quick navigation.
 4. Saving settings automatically registers WordPress rewrite rules and flushes the rewrite cache.
 
+### Credentials
+
+Kitchen Synk keeps no keys of its own. Every secret is read server-side through the WordPress Connectors API (`includes/class-kitchen-synk-connectors.php`) and never reaches the browser, a URL, a REST response or a log:
+
+| Use | Connector (Settings > Connectors) |
+| :-- | :-- |
+| Gemini (recipes, meal plans, scans, images) | `google`, sent in the `x-goog-api-key` header |
+| Stripe checkout and verification | `stripe_secret_key` |
+| Stripe webhook signature | `kitchen_synk_stripe_webhook_secret` (registered by this plugin) |
+
+Each connector resolves in core's order: its environment variable, then its PHP constant, then its saved setting.
+
 ---
 
 ## 🚀 Development & Production Workflow

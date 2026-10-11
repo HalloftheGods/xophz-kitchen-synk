@@ -136,7 +136,7 @@ trait Xophz_Kitchen_Synk_API_Recipes {
         if ( ! empty( $api_key ) ) {
             // Try Gemini Flash Image generation first
             $model = $this->get_gemini_model();
-            $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $api_key;
+            $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
             $body = array(
                 'contents' => array(
                     array( 'parts' => array( array( 'text' => $ac_prompt ) ) )
@@ -147,7 +147,7 @@ trait Xophz_Kitchen_Synk_API_Recipes {
             );
 
             $res = wp_remote_post( $url, array(
-                'headers' => array( 'Content-Type' => 'application/json' ),
+                'headers' => Kitchen_Synk_Connectors::gemini_headers( $api_key ),
                 'body'    => wp_json_encode( $body ),
                 'timeout' => 25,
             ) );

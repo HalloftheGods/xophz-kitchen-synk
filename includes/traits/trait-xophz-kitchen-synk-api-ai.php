@@ -7,32 +7,7 @@ if ( ! defined( 'WPINC' ) ) {
 trait Xophz_Kitchen_Synk_API_AI {
 
     private function get_api_key() {
-        if ( function_exists( 'wp_get_connectors' ) ) {
-            $connectors = wp_get_connectors();
-            if ( ! empty( $connectors['google']['authentication']['setting_name'] ) ) {
-                $api_key = get_option( $connectors['google']['authentication']['setting_name'], '' );
-                if ( ! empty( $api_key ) ) {
-                    return $api_key;
-                }
-            }
-        }
-
-        if ( defined( 'GEMINI_API_KEY' ) && ! empty( GEMINI_API_KEY ) ) {
-            return GEMINI_API_KEY;
-        }
-        if ( ! empty( get_option( 'connectors_ai_google_api_key' ) ) ) {
-            return get_option( 'connectors_ai_google_api_key' );
-        }
-        if ( ! empty( $_ENV['GEMINI_API_KEY'] ) ) {
-            return $_ENV['GEMINI_API_KEY'];
-        }
-        if ( ! empty( getenv( 'GEMINI_API_KEY' ) ) ) {
-            return getenv( 'GEMINI_API_KEY' );
-        }
-        if ( ! empty( get_option( 'xophz_gemini_api_key' ) ) ) {
-            return get_option( 'xophz_gemini_api_key' );
-        }
-        return get_option( 'gemini_api_key', '' );
+        return Kitchen_Synk_Connectors::gemini_key();
     }
 
     private function get_gemini_model() {
@@ -130,7 +105,7 @@ trait Xophz_Kitchen_Synk_API_AI {
     public function generate_recipes( WP_REST_Request $request ) {
         $api_key = $this->get_api_key();
         if ( empty( $api_key ) ) {
-            return new WP_Error( 'no_api_key', 'Gemini API key is not configured. Please set GEMINI_API_KEY in environment or site settings.', array( 'status' => 500 ) );
+            return new WP_Error( 'no_api_key', 'Gemini API key is not configured. Add the Google key under Settings > Connectors.', array( 'status' => 500 ) );
         }
 
         $params = $request->get_json_params();
@@ -256,10 +231,10 @@ trait Xophz_Kitchen_Synk_API_AI {
         $body_res = array();
         $last_err_msg = '';
 
-        $gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $api_key;
+        $gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
         
         $res = wp_remote_post( $gemini_url, array(
-                'headers' => array( 'Content-Type' => 'application/json' ),
+                'headers' => Kitchen_Synk_Connectors::gemini_headers( $api_key ),
                 'body'    => wp_json_encode( $body ),
                 'timeout' => 30,
             ) );
@@ -450,10 +425,7 @@ trait Xophz_Kitchen_Synk_API_AI {
     public function generate_meal_plan( WP_REST_Request $request ) {
         $api_key = $this->get_api_key();
         if ( empty( $api_key ) ) {
-            $api_key = get_option( 'ks_gemini_api_key', '' );
-        }
-        if ( empty( $api_key ) ) {
-            return new WP_Error( 'missing_api_key', 'Gemini API Key is not set in Kitchen Synk plugin settings.', array( 'status' => 400 ) );
+            return new WP_Error( 'missing_api_key', 'Gemini API key is not configured. Add the Google key under Settings > Connectors.', array( 'status' => 400 ) );
         }
 
         $params   = $request->get_json_params();
@@ -509,10 +481,10 @@ trait Xophz_Kitchen_Synk_API_AI {
         $body_res = array();
         $last_err_msg = '';
 
-        $gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $api_key;
+        $gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
         
         $res = wp_remote_post( $gemini_url, array(
-            'headers' => array( 'Content-Type' => 'application/json' ),
+            'headers' => Kitchen_Synk_Connectors::gemini_headers( $api_key ),
             'body'    => wp_json_encode( $body ),
             'timeout' => 35,
         ) );
