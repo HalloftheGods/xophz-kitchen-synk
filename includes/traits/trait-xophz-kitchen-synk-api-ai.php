@@ -141,6 +141,12 @@ trait Xophz_Kitchen_Synk_API_AI {
             ) );
         }
 
+        // Per-user hourly Gemini allowance (logged-in users only), then the daily tier quota.
+        $allowance = Kitchen_Synk_AI_Gate::consume_allowance();
+        if ( is_wp_error( $allowance ) ) {
+            return $allowance;
+        }
+
         // Server-enforced daily rate limit quota check
         $quota_res = $this->check_and_increment_ai_quota( $user_id );
         if ( is_wp_error( $quota_res ) ) {
@@ -453,6 +459,12 @@ trait Xophz_Kitchen_Synk_API_AI {
                 'cached'  => true,
                 'quota'   => $quota_info,
             ) );
+        }
+
+        // Per-user hourly Gemini allowance (logged-in users only), then the daily tier quota.
+        $allowance = Kitchen_Synk_AI_Gate::consume_allowance();
+        if ( is_wp_error( $allowance ) ) {
+            return $allowance;
         }
 
         // Check server-side daily quota

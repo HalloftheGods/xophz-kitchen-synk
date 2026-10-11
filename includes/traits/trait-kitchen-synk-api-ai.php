@@ -29,6 +29,13 @@ trait Kitchen_Synk_API_AI_Trait {
             return new WP_Error( 'no_api_key', 'Gemini API key is not configured. Add the Google key under Settings > Connectors.', array( 'status' => 500 ) );
         }
 
+        // Every Gemini call through this trait (REST and the /api paths) needs a logged-in user and
+        // counts against that user's hourly allowance.
+        $allowance = Kitchen_Synk_AI_Gate::consume_allowance();
+        if ( is_wp_error( $allowance ) ) {
+            return $allowance;
+        }
+
         $model = $this->get_gemini_model();
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . $model . ':generateContent';
 

@@ -132,8 +132,10 @@ trait Xophz_Kitchen_Synk_API_Recipes {
 
         $ac_prompt = "A stylized mix of Animal Crossing New Horizons, Zelda Tears of the Kingdom, and real life photorealism food dish item icon, 3d game render of {$title}{$ing_clause} {$vessel}, cute yet highly detailed 3d game asset, isometric view, isolated on pure solid white background, no table, no wooden board, no trivet";
 
+        // Gemini image generation counts against the caller's hourly allowance. Once it is spent,
+        // or nobody is logged in, skip Gemini and use the free fallback below.
         $api_key = $this->get_api_key();
-        if ( ! empty( $api_key ) ) {
+        if ( ! empty( $api_key ) && true === Kitchen_Synk_AI_Gate::consume_allowance() ) {
             // Try Gemini Flash Image generation first
             $model = $this->get_gemini_model();
             $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
@@ -192,6 +194,17 @@ trait Xophz_Kitchen_Synk_API_Recipes {
                     $post = get_post( $found );
                     $post_id = $post->ID;
                 }
+            }
+        }
+
+        // Only the caller's own saved recipe (or any, for an editor) gets its featured image replaced.
+        // Any other post found by id or title is left untouched: its old thumbnail is never deleted.
+        if ( $post ) {
+            $is_recipe = 'ks_saved_recipe' === $post->post_type;
+            $can_edit  = (int) $post->post_author === get_current_user_id() || current_user_can( 'edit_others_posts' );
+            if ( ! $is_recipe || ! $can_edit ) {
+                $post    = null;
+                $post_id = 0;
             }
         }
 

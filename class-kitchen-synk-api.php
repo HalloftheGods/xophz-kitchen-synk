@@ -49,28 +49,30 @@ class Xophz_Kitchen_Synk_API {
             'permission_callback' => 'is_user_logged_in',
         ) );
 
+        // These four call Gemini (text or image), so they need a logged-in user and count against
+        // the per-user hourly limit in Kitchen_Synk_AI_Gate.
         register_rest_route( 'kitchen-synk/v1', '/generate-recipes', array(
             'methods'             => 'POST',
             'callback'            => array( $this, 'generate_recipes' ),
-            'permission_callback' => '__return_true',
+            'permission_callback' => array( 'Kitchen_Synk_AI_Gate', 'can_use_ai' ),
         ) );
 
         register_rest_route( 'kitchen-synk/v1', '/generate-meal-plan', array(
             'methods'             => 'POST',
             'callback'            => array( $this, 'generate_meal_plan' ),
-            'permission_callback' => '__return_true',
+            'permission_callback' => array( 'Kitchen_Synk_AI_Gate', 'can_use_ai' ),
         ) );
 
         register_rest_route( 'kitchen-synk/v1', '/save-recipe', array(
             'methods'             => 'POST',
             'callback'            => array( $this, 'save_recipe' ),
-            'permission_callback' => '__return_true',
+            'permission_callback' => array( 'Kitchen_Synk_AI_Gate', 'can_use_ai' ),
         ) );
 
         register_rest_route( 'kitchen-synk/v1', '/regenerate-recipe-image', array(
             'methods'             => 'POST',
             'callback'            => array( $this, 'regenerate_recipe_image' ),
-            'permission_callback' => '__return_true',
+            'permission_callback' => array( 'Kitchen_Synk_AI_Gate', 'can_use_ai' ),
         ) );
 
         register_rest_route( 'kitchen-synk/v1', '/quota', array(

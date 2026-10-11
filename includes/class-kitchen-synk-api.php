@@ -31,22 +31,23 @@ class Kitchen_Synk_API {
             'permission_callback' => '__return_true',
         ) );
 
+        // The Gemini routes spend the owner's key: logged-in users only, plus a per-user hourly limit.
         register_rest_route( 'kitchen-synk/v1', '/gemini/scan-barcode', array(
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => array( $this, 'rest_scan_barcode' ),
-            'permission_callback' => '__return_true',
+            'permission_callback' => array( 'Kitchen_Synk_AI_Gate', 'can_use_ai' ),
         ) );
 
         register_rest_route( 'kitchen-synk/v1', '/gemini/scan-pantry', array(
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => array( $this, 'rest_scan_pantry' ),
-            'permission_callback' => '__return_true',
+            'permission_callback' => array( 'Kitchen_Synk_AI_Gate', 'can_use_ai' ),
         ) );
 
         register_rest_route( 'kitchen-synk/v1', '/gemini/generate-recipes', array(
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => array( $this, 'rest_generate_recipes' ),
-            'permission_callback' => '__return_true',
+            'permission_callback' => array( 'Kitchen_Synk_AI_Gate', 'can_use_ai' ),
         ) );
 
         register_rest_route( 'kitchen-synk/v1', '/quota', array(

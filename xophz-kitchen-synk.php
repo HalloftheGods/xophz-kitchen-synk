@@ -44,6 +44,7 @@ if ( ! function_exists( 'xophz_kitchen_synk_get_base_url' ) ) {
 
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/class-kitchen-synk-connectors.php';
 Kitchen_Synk_Connectors::init();
+require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/class-kitchen-synk-ai-gate.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'class-kitchen-synk-api.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/class-kitchen-synk-api.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-xophz-kitchen-synk-admin.php';
@@ -179,7 +180,17 @@ class Xophz_Kitchen_Synk {
             $input_data = array();
         }
 
-        if ( strpos( $path, 'barcode-lookup' ) !== false ) {
+        // The Gemini paths spend the owner's key: logged-in users only, before any quota is counted.
+        $is_gemini_path = (
+            strpos( $path, 'scan-barcode' ) !== false ||
+            strpos( $path, 'scan-pantry' ) !== false ||
+            strpos( $path, 'generate-recipes' ) !== false
+        );
+        $gate = $is_gemini_path ? Kitchen_Synk_AI_Gate::can_use_ai() : true;
+
+        if ( is_wp_error( $gate ) ) {
+            $response = $gate;
+        } elseif ( strpos( $path, 'barcode-lookup' ) !== false ) {
             $barcode  = isset( $input_data['barcode'] ) ? $input_data['barcode'] : '';
             $response = $this->api->handle_barcode_lookup( $barcode );
         } elseif ( strpos( $path, 'scan-barcode' ) !== false ) {
