@@ -23,85 +23,6 @@ trait Xophz_Kitchen_Synk_API_AI {
         return 'gemini-3.6-flash';
     }
 
-    public function get_user_quota_info( $user_id = null ) {
-        if ( empty( $user_id ) ) {
-            $user_id = get_current_user_id() ?: 1;
-        }
-
-        $tier = get_user_meta( $user_id, 'kitchensynk_user_type', true ) ?: 'starter';
-        
-        $limits = array(
-            'starter'           => 3,
-            'free'              => 3,
-            'individual'        => 20,
-            'pro'               => 20,
-            'pro_chef'          => 20,
-            'family'            => 50,
-            'lifetime'          => 25,
-            'enterprise_pantry' => 50,
-            'commercial'        => 50,
-        );
-
-        $limit = isset( $limits[ $tier ] ) ? $limits[ $tier ] : 20;
-
-        $today = date( 'Y-m-d' );
-        $last_date = get_user_meta( $user_id, 'ks_ai_quota_date', true );
-        $used = (int) get_user_meta( $user_id, 'ks_ai_quota_used', true );
-
-        if ( $last_date !== $today ) {
-            $used = 0;
-            update_user_meta( $user_id, 'ks_ai_quota_date', $today );
-            update_user_meta( $user_id, 'ks_ai_quota_used', 0 );
-        }
-
-        return array(
-            'tier'      => $tier,
-            'limit'     => $limit,
-            'used'      => $used,
-            'remaining' => max( 0, $limit - $used ),
-            'reset'     => $today . ' 23:59:59',
-        );
-    }
-
-    public function check_and_increment_ai_quota( $user_id = null ) {
-        if ( empty( $user_id ) ) {
-            $user_id = get_current_user_id() ?: 1;
-        }
-
-        $info = $this->get_user_quota_info( $user_id );
-
-        if ( $info['used'] >= $info['limit'] ) {
-            return new WP_Error(
-                'ks_ai_quota_exceeded',
-                "Daily AI quota limit ({$info['limit']} requests/day) reached for tier '{$info['tier']}'. Please upgrade your subscription or wait for daily reset.",
-                array(
-                    'status' => 429,
-                    'data'   => array(
-                        'tier'      => $info['tier'],
-                        'limit'     => $info['limit'],
-                        'used'      => $info['used'],
-                        'remaining' => 0,
-                        'reset'     => $info['reset'],
-                    )
-                )
-            );
-        }
-
-        $new_used = $info['used'] + 1;
-        update_user_meta( $user_id, 'ks_ai_quota_used', $new_used );
-
-        $info['used'] = $new_used;
-        $info['remaining'] = max( 0, $info['limit'] - $new_used );
-
-        return $info;
-    }
-
-    public function get_ai_quota( WP_REST_Request $request ) {
-        $user_id = get_current_user_id() ?: 1;
-        $quota = $this->get_user_quota_info( $user_id );
-        return rest_ensure_response( array( 'success' => true, 'quota' => $quota ) );
-    }
-
     public function generate_recipes( WP_REST_Request $request ) {
         $api_key = $this->get_api_key();
         if ( empty( $api_key ) ) {
@@ -120,7 +41,7 @@ trait Xophz_Kitchen_Synk_API_AI {
         }, $items);
         $item_names = array_values( array_unique( array_filter( $raw_names ) ) );
 
-        $user_id = get_current_user_id() ?: 1;
+        $user_id = get_current_user_id();
 
         // Check 4-hour transient cache for identical request payload
         $cache_payload = array(
@@ -293,7 +214,7 @@ trait Xophz_Kitchen_Synk_API_AI {
             return new WP_Error( 'json_parse_error', 'Failed to parse JSON from AI: ' . substr($raw_text, 0, 200), array( 'status' => 500 ) );
         }
 
-        $user_id = get_current_user_id() ?: 1;
+        $user_id = get_current_user_id();
 
         // Auto-save as suggested meals and verify hallucinations
         foreach ( $recipes as &$r ) {
@@ -440,7 +361,7 @@ trait Xophz_Kitchen_Synk_API_AI {
         $slots    = $params['slots'] ?? array('Breakfast', 'Lunch', 'Dinner', 'Snack');
         $days     = $params['days'] ?? array('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday');
 
-        $user_id = get_current_user_id() ?: 1;
+        $user_id = get_current_user_id();
 
         // Check 6-hour transient cache for identical meal plan request
         $cache_payload = array(

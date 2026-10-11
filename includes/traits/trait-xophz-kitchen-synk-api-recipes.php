@@ -14,7 +14,7 @@ trait Xophz_Kitchen_Synk_API_Recipes {
             return new WP_Error( 'invalid_data', 'Missing recipe data', array( 'status' => 400 ) );
         }
 
-        $user_id = get_current_user_id() ?: 1;
+        $user_id = get_current_user_id();
 
         $post_id = wp_insert_post( array(
             'post_title'   => sanitize_text_field( $recipe['title'] ),

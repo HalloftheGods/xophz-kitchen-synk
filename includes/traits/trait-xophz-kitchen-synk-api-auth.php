@@ -42,13 +42,27 @@ trait Xophz_Kitchen_Synk_API_Auth {
         ) );
     }
 
+    /**
+     * Public by design: this is how the app signs a visitor in. It strips CAPTCHA filters below, so
+     * failed attempts are counted here instead: 30 per address and 10 per login in 15 minutes.
+     */
     public function login_user( WP_REST_Request $request ) {
-        $params   = $request->get_json_params();
-        $username = sanitize_text_field( $params['username'] ?? '' );
-        $password = $params['password'] ?? '';
+        $params   = (array) $request->get_json_params();
+        $username = sanitize_text_field( is_string( $params['username'] ?? null ) ? $params['username'] : '' );
+        $password = is_string( $params['password'] ?? null ) ? $params['password'] : '';
 
         if ( empty( $username ) || empty( $password ) ) {
             return new WP_Error( 'missing_credentials', 'Username/Email and Password are required.', array( 'status' => 400 ) );
+        }
+
+        $client_ip     = Kitchen_Synk_Rate_Limit::client_ip();
+        $login_subject = $username;
+        $wait          = max(
+            Kitchen_Synk_Rate_Limit::seconds_until_free( 'login_ip', $client_ip, 30 ),
+            Kitchen_Synk_Rate_Limit::seconds_until_free( 'login_user', $login_subject, 10 )
+        );
+        if ( $wait > 0 ) {
+            return Kitchen_Synk_Rate_Limit::too_many( $wait, 'Too many failed login attempts. Please try again later.' );
         }
 
         if ( is_email( $username ) ) {
@@ -101,9 +115,12 @@ trait Xophz_Kitchen_Synk_API_Auth {
         $user = wp_signon( $creds, is_ssl() );
 
         if ( is_wp_error( $user ) ) {
+            Kitchen_Synk_Rate_Limit::record( 'login_ip', $client_ip, 15 * MINUTE_IN_SECONDS );
+            Kitchen_Synk_Rate_Limit::record( 'login_user', $login_subject, 15 * MINUTE_IN_SECONDS );
             return new WP_Error( 'login_failed', wp_strip_all_tags( $user->get_error_message() ), array( 'status' => 401 ) );
         }
 
+        Kitchen_Synk_Rate_Limit::clear( 'login_user', $login_subject );
         wp_set_current_user( $user->ID );
         wp_set_auth_cookie( $user->ID, true );
 
@@ -144,12 +161,23 @@ trait Xophz_Kitchen_Synk_API_Auth {
         return rest_ensure_response( array( 'success' => true ) );
     }
 
+    /**
+     * Public by design: plain sign-up, no email check. It creates an account, so one address (IP)
+     * can only make a few per hour (the same counter as register-and-checkout). The caller never
+     * picks a plan: every new account starts on 'starter', and a paid plan comes only from a
+     * Stripe payment or a referral reward.
+     */
     public function register_user( WP_REST_Request $request ) {
-        $params   = $request->get_json_params();
-        $username = sanitize_user( $params['username'] ?? '' );
-        $email    = sanitize_email( $params['email'] ?? '' );
-        $password = $params['password'] ?? '';
-        $tier     = sanitize_text_field( $params['tier'] ?? 'starter' );
+        $limited = Kitchen_Synk_Rate_Limit::hit( 'register_ip', Kitchen_Synk_Rate_Limit::client_ip(), 20, HOUR_IN_SECONDS, 'Too many sign-up attempts from this network. Please try again later.' );
+        if ( is_wp_error( $limited ) ) {
+            return $limited;
+        }
+
+        $params   = (array) $request->get_json_params();
+        $username = sanitize_user( is_string( $params['username'] ?? null ) ? $params['username'] : '' );
+        $email    = sanitize_email( is_string( $params['email'] ?? null ) ? $params['email'] : '' );
+        $password = is_string( $params['password'] ?? null ) ? $params['password'] : '';
+        $tier     = 'starter';
 
         if ( empty( $username ) || empty( $email ) || empty( $password ) ) {
             return new WP_Error( 'missing_fields', 'Username, Email, and Password are required.', array( 'status' => 400 ) );
@@ -204,15 +232,19 @@ trait Xophz_Kitchen_Synk_API_Auth {
             return new WP_Error( 'not_logged_in', 'Must be logged in to update profile', array( 'status' => 401 ) );
         }
 
-        $params  = $request->get_json_params();
+        $params  = (array) $request->get_json_params();
         $profile = $params['profile'] ?? null;
 
         if ( ! is_array( $profile ) ) {
             return new WP_Error( 'invalid_data', 'Invalid profile payload', array( 'status' => 400 ) );
         }
 
-        if ( ! empty( $profile['planTier'] ) ) {
-            update_user_meta( $user_id, 'kitchensynk_user_type', sanitize_text_field( $profile['planTier'] ) );
+        // The plan comes from a payment, a referral reward or an admin, never from the browser, so
+        // a planTier or isPro sent here is dropped. get_me() adds the real values back on every read.
+        unset( $profile['planTier'], $profile['isPro'] );
+
+        if ( strlen( (string) wp_json_encode( $profile ) ) > 64 * KB_IN_BYTES ) {
+            return new WP_Error( 'payload_too_large', 'Profile is too large.', array( 'status' => 413 ) );
         }
 
         update_user_meta( $user_id, 'ks_user_profile', $profile );

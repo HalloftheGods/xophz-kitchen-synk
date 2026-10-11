@@ -43,6 +43,26 @@ Kitchen Synk keeps no keys of its own. Every secret is read server-side through 
 
 Each connector resolves in core's order: its environment variable, then its PHP constant, then its saved setting.
 
+### Who can call what (`kitchen-synk/v1`)
+
+| Access | Routes |
+| :-- | :-- |
+| Logged-in only | `/gemini/*`, `/generate-recipes`, `/generate-meal-plan`, `/save-recipe`, `/regenerate-recipe-image` (also capped at 20 Gemini calls per user per hour), `/quota`, `/profile`, `/update-username`, `/license`, `/referral` |
+| Public on purpose, rate limited per IP (`REMOTE_ADDR`) and, where it names one, per target | `/login` (30 failures per IP and 10 per login in 15 minutes), `/register` and `/register-and-checkout` (20 per IP per hour, shared), `/send-otp` (15 per IP and 5 per email per hour), `/barcode-lookup` (120 per IP per 10 minutes), `/checkout/session` (20 per IP per hour), `/checkout/verify` (30 per IP per hour) |
+| Public, no limit needed | `/me` (reports a guest), `/logout`, `/connectors/google-tag` (the public tag id) |
+| Admin (`manage_options`) | `/connectors/stripe`, saving the Google tag |
+| Signed by Stripe | `/stripe/webhook` |
+
+Notes:
+
+* `/quota` returns the caller's own daily AI quota. Only an admin may pass `user_id` to read someone else's, and reading never writes. A quota rolls over to a new day when its owner next uses AI.
+* A sign-up code is good for five wrong guesses. The plan on a new account is always `starter`; a paid plan comes from a paid Stripe checkout or a referral reward, never from a request field (`/register`, `/profile`).
+* `/checkout/session` checks the price with Stripe. If the Stripe price has `user_type` in its metadata, that plan is used, so tag each price with its plan (`individual`, `family`, `lifetime`) to stop a cheap price being bought under a dearer plan name.
+* `/checkout/verify` only accepts a paid session less than a day old, and never signs a payer in to an account that already existed.
+* Images sent to the Gemini scan routes are capped at 5 MB decoded (413 above that), and the non-REST `/api/gemini/*` paths read at most 7 MB of request body.
+* The non-REST `/api/*` paths answer CORS only for this site's own origin (home and site URL). To allow another app origin, add it with the `xophz_kitchen_synk_allowed_origins` filter. Cookies are never allowed cross-origin.
+* Counters live in transients and key on `REMOTE_ADDR`. Behind a proxy, make the web server set `REMOTE_ADDR` from the proxy (or map the visitor address with the `xophz_kitchen_synk_client_ip` filter), or every visitor shares one counter.
+
 ---
 
 ## 🚀 Development & Production Workflow

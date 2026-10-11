@@ -32,6 +32,13 @@ trait Kitchen_Synk_API_Barcode_Trait {
             return new WP_REST_Response( array( 'error' => 'Invalid barcode format' ), 400 );
         }
 
+        // Anyone may look a barcode up (no login), and each lookup makes up to three requests to
+        // Open Food Facts, so one address gets a fixed number per window.
+        $limited = Kitchen_Synk_Rate_Limit::hit( 'barcode_ip', Kitchen_Synk_Rate_Limit::client_ip(), 120, 10 * MINUTE_IN_SECONDS, 'Too many barcode lookups. Please wait a few minutes.' );
+        if ( is_wp_error( $limited ) ) {
+            return $limited;
+        }
+
         $candidateBarcodes = array( $cleanBarcode );
         if ( strlen( $cleanBarcode ) === 12 ) {
             $candidateBarcodes[] = '0' . $cleanBarcode;
@@ -149,6 +156,35 @@ trait Kitchen_Synk_API_Barcode_Trait {
         ), 200 );
     }
 
+    /**
+     * Checks an uploaded image before it is decoded or sent to Gemini and returns the bare base64.
+     *
+     * The decoded size is worked out from the base64 length, so an oversized upload is refused
+     * with 413 without decoding it. Anything that is not a base64 string gets 400.
+     *
+     * @param mixed $raw Value of imageBase64, with or without a data: URL prefix.
+     * @return string|WP_REST_Response The base64 data, or the error response to return.
+     */
+    private function clean_image_payload( $raw ) {
+        if ( ! is_string( $raw ) ) {
+            return new WP_REST_Response( array( 'error' => 'imageBase64 must be a base64 string' ), 400 );
+        }
+
+        $clean = trim( (string) preg_replace( '/^data:image\/[\w.+-]+;base64,/', '', $raw ) );
+        $size  = (int) floor( strlen( $clean ) * 3 / 4 ) - substr_count( substr( $clean, -2 ), '=' );
+
+        if ( $size > Kitchen_Synk_AI_Gate::MAX_IMAGE_BYTES ) {
+            $limit_mb = (int) ( Kitchen_Synk_AI_Gate::MAX_IMAGE_BYTES / MB_IN_BYTES );
+            return new WP_REST_Response( array( 'error' => "Image is too large. The limit is {$limit_mb} MB." ), 413 );
+        }
+
+        if ( '' === $clean || false === base64_decode( $clean, true ) ) {
+            return new WP_REST_Response( array( 'error' => 'imageBase64 is not valid base64' ), 400 );
+        }
+
+        return $clean;
+    }
+
     public function handle_scan_barcode( $params ) {
         $barcode = isset( $params['barcode'] ) ? $params['barcode'] : '';
         $imageBase64 = isset( $params['imageBase64'] ) ? $params['imageBase64'] : '';
@@ -159,7 +195,10 @@ trait Kitchen_Synk_API_Barcode_Trait {
 
         $contents = array();
         if ( ! empty( $imageBase64 ) ) {
-            $cleanBase64 = preg_replace( '/^data:image\/\w+;base64,/', '', $imageBase64 );
+            $cleanBase64 = $this->clean_image_payload( $imageBase64 );
+            if ( $cleanBase64 instanceof WP_REST_Response ) {
+                return $cleanBase64;
+            }
             $contents[] = array(
                 'parts' => array(
                     array(
@@ -215,7 +254,10 @@ trait Kitchen_Synk_API_Barcode_Trait {
             return new WP_REST_Response( array( 'error' => 'No image provided' ), 400 );
         }
 
-        $cleanBase64 = preg_replace( '/^data:image\/\w+;base64,/', '', $imageBase64 );
+        $cleanBase64 = $this->clean_image_payload( $imageBase64 );
+        if ( $cleanBase64 instanceof WP_REST_Response ) {
+            return $cleanBase64;
+        }
         $prompt = "Analyze this image of food items, refrigerator shelves, or pantry contents. Identify all visible ingredients, produce, packaged items, or condiments.\n" . ( $notes ? "User context: \"{$notes}\"" : "" );
 
         $contents = array(

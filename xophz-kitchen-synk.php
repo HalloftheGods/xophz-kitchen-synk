@@ -45,6 +45,7 @@ if ( ! function_exists( 'xophz_kitchen_synk_get_base_url' ) ) {
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/class-kitchen-synk-connectors.php';
 Kitchen_Synk_Connectors::init();
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/class-kitchen-synk-ai-gate.php';
+require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/class-kitchen-synk-rate-limit.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'class-kitchen-synk-api.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/class-kitchen-synk-api.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-xophz-kitchen-synk-admin.php';
@@ -165,17 +166,35 @@ class Xophz_Kitchen_Synk {
             return;
         }
 
-        header( 'Access-Control-Allow-Origin: *' );
-        header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
-        header( 'Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With' );
+        // CORS: only an origin on the allowlist is answered, and it is echoed back exactly. A
+        // request with no Origin header (same-origin or a server call) needs no CORS headers.
+        // Credentials are never allowed cross-origin on these paths.
+        $origin         = $this->normalize_origin( isset( $_SERVER['HTTP_ORIGIN'] ) ? wp_unslash( $_SERVER['HTTP_ORIGIN'] ) : '' );
+        $origin_allowed = '' !== $origin && in_array( $origin, $this->get_allowed_origins(), true );
+
+        header( 'Vary: Origin', false );
+        if ( $origin_allowed ) {
+            header( 'Access-Control-Allow-Origin: ' . $origin );
+            header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
+            header( 'Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With' );
+        }
 
         if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === $_SERVER['REQUEST_METHOD'] ) {
-            status_header( 200 );
+            // A preflight from an origin that is not allowed gets no CORS headers and a 403.
+            status_header( ( '' !== $origin && ! $origin_allowed ) ? 403 : 200 );
             exit;
         }
 
-        $input_raw  = file_get_contents( 'php://input' );
-        $input_data = json_decode( $input_raw, true );
+        // Read at most one image's worth of body, so a huge upload cannot fill memory.
+        $max_body = Kitchen_Synk_AI_Gate::MAX_BODY_BYTES;
+        if ( isset( $_SERVER['CONTENT_LENGTH'] ) && (int) $_SERVER['CONTENT_LENGTH'] > $max_body ) {
+            $this->send_json_error( 413, 'Request body is too large.' );
+        }
+        $input_raw = file_get_contents( 'php://input', false, null, 0, $max_body + 1 );
+        if ( false !== $input_raw && strlen( $input_raw ) > $max_body ) {
+            $this->send_json_error( 413, 'Request body is too large.' );
+        }
+        $input_data = json_decode( (string) $input_raw, true );
         if ( ! is_array( $input_data ) ) {
             $input_data = array();
         }
@@ -215,6 +234,47 @@ class Xophz_Kitchen_Synk {
             status_header( 200 );
             echo wp_json_encode( $response );
         }
+        exit;
+    }
+
+    /**
+     * Origins that may read the /api paths from a browser: this site's own origin (home and site
+     * URL, with scheme and port), plus whatever the xophz_kitchen_synk_allowed_origins filter adds.
+     * The plugin configures no other origin.
+     *
+     * @return string[]
+     */
+    private function get_allowed_origins() {
+        $origins = apply_filters( 'xophz_kitchen_synk_allowed_origins', array( home_url(), site_url() ) );
+
+        return array_values( array_unique( array_filter( array_map( array( $this, 'normalize_origin' ), (array) $origins ) ) ) );
+    }
+
+    /**
+     * Reduces a URL or an Origin header to scheme://host[:port] in lower case, or '' when it is not
+     * an http(s) origin.
+     *
+     * @param mixed $value URL or Origin header value.
+     * @return string
+     */
+    private function normalize_origin( $value ) {
+        $parts = is_string( $value ) ? wp_parse_url( trim( $value ) ) : false;
+        if ( ! is_array( $parts ) || empty( $parts['scheme'] ) || empty( $parts['host'] ) ) {
+            return '';
+        }
+
+        $scheme = strtolower( $parts['scheme'] );
+        if ( 'http' !== $scheme && 'https' !== $scheme ) {
+            return '';
+        }
+
+        return $scheme . '://' . strtolower( $parts['host'] ) . ( ! empty( $parts['port'] ) ? ':' . (int) $parts['port'] : '' );
+    }
+
+    private function send_json_error( $status, $message ) {
+        status_header( $status );
+        header( 'Content-Type: application/json; charset=UTF-8' );
+        echo wp_json_encode( array( 'error' => $message ) );
         exit;
     }
 }

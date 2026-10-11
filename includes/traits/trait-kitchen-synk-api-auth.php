@@ -6,9 +6,18 @@ if ( ! defined( 'WPINC' ) ) {
 
 trait Kitchen_Synk_API_Auth_Trait {
 
+    /**
+     * Public by design: this is the first step of sign-up. It sends an email, so one address (IP)
+     * and one mailbox can only ask for a few codes per hour.
+     */
     public function rest_send_otp( WP_REST_Request $request ) {
-        $params = $request->get_json_params();
-        $email  = sanitize_email( $params['email'] ?? '' );
+        $limited = Kitchen_Synk_Rate_Limit::hit( 'otp_ip', Kitchen_Synk_Rate_Limit::client_ip(), 15, HOUR_IN_SECONDS, 'Too many verification requests from this network. Please try again later.' );
+        if ( is_wp_error( $limited ) ) {
+            return $limited;
+        }
+
+        $params = (array) $request->get_json_params();
+        $email  = sanitize_email( is_string( $params['email'] ?? null ) ? $params['email'] : '' );
 
         if ( empty( $email ) || ! is_email( $email ) ) {
             return new WP_Error( 'invalid_email', 'Valid email address is required.', array( 'status' => 400 ) );
@@ -28,6 +37,11 @@ trait Kitchen_Synk_API_Auth_Trait {
             $suggested_username .= '_' . wp_rand( 10, 999 );
         }
 
+        $limited = Kitchen_Synk_Rate_Limit::hit( 'otp_email', $email, 5, HOUR_IN_SECONDS, 'Too many codes were requested for this email address. Please try again later.' );
+        if ( is_wp_error( $limited ) ) {
+            return $limited;
+        }
+
         $otp = sprintf( '%06d', wp_rand( 100000, 999999 ) );
         $transient_key = 'ks_otp_' . md5( strtolower( $email ) );
 
@@ -35,6 +49,8 @@ trait Kitchen_Synk_API_Auth_Trait {
             'otp'      => $otp,
             'username' => $suggested_username,
             'email'    => $email,
+            'attempts' => 0,
+            'expires'  => time() + 15 * MINUTE_IN_SECONDS,
         ), 15 * MINUTE_IN_SECONDS );
 
         wp_mail( $email, 'Kitchen Synk Verification Code', "Your Kitchen Synk verification code is: {$otp}" );
@@ -43,16 +59,24 @@ trait Kitchen_Synk_API_Auth_Trait {
             'success'            => true,
             'message'            => 'Verification code sent to your email address.',
             'suggested_username' => $suggested_username,
-            'debug_otp'          => ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ? $otp : null,
         ) );
     }
 
+    /**
+     * Public by design: this is the last step of sign-up, and it creates the account. A code is
+     * only good for five wrong guesses, and one address (IP) can only try so many times per hour.
+     */
     public function rest_register_and_checkout( WP_REST_Request $request ) {
-        $params   = $request->get_json_params();
-        $email    = sanitize_email( $params['email'] ?? '' );
-        $otp      = sanitize_text_field( $params['otp'] ?? '' );
-        $username = sanitize_user( $params['username'] ?? '' );
-        $password = $params['password'] ?? '';
+        $limited = Kitchen_Synk_Rate_Limit::hit( 'register_ip', Kitchen_Synk_Rate_Limit::client_ip(), 20, HOUR_IN_SECONDS, 'Too many sign-up attempts from this network. Please try again later.' );
+        if ( is_wp_error( $limited ) ) {
+            return $limited;
+        }
+
+        $params   = (array) $request->get_json_params();
+        $email    = sanitize_email( is_string( $params['email'] ?? null ) ? $params['email'] : '' );
+        $otp      = sanitize_text_field( is_string( $params['otp'] ?? null ) ? $params['otp'] : '' );
+        $username = sanitize_user( is_string( $params['username'] ?? null ) ? $params['username'] : '' );
+        $password = is_string( $params['password'] ?? null ) ? $params['password'] : '';
         $name     = sanitize_text_field( $params['name'] ?? '' );
         $tier     = sanitize_text_field( $params['tier'] ?? 'starter' );
         $price_id = sanitize_text_field( $params['price_id'] ?? '' );
@@ -68,7 +92,20 @@ trait Kitchen_Synk_API_Auth_Trait {
         $transient_key = 'ks_otp_' . md5( strtolower( $email ) );
         $stored = get_transient( $transient_key );
 
-        if ( ! $stored || empty( $stored['otp'] ) || (string) $stored['otp'] !== (string) $otp ) {
+        if ( ! $stored || empty( $stored['otp'] ) ) {
+            return new WP_Error( 'invalid_otp', 'Invalid or expired verification code. Please check code or resend.', array( 'status' => 400 ) );
+        }
+
+        if ( ! hash_equals( (string) $stored['otp'], (string) $otp ) ) {
+            // Five wrong guesses burn the code, so it cannot be brute forced inside its 15 minutes.
+            $attempts = (int) ( $stored['attempts'] ?? 0 ) + 1;
+            if ( $attempts >= 5 ) {
+                delete_transient( $transient_key );
+            } else {
+                $stored['attempts'] = $attempts;
+                $remaining          = (int) ( $stored['expires'] ?? time() + 15 * MINUTE_IN_SECONDS ) - time();
+                set_transient( $transient_key, $stored, max( 60, $remaining ) );
+            }
             return new WP_Error( 'invalid_otp', 'Invalid or expired verification code. Please check code or resend.', array( 'status' => 400 ) );
         }
 
@@ -260,95 +297,49 @@ trait Kitchen_Synk_API_Auth_Trait {
         ) );
     }
 
+    /**
+     * Changes the display name of the logged-in caller and nobody else. The route needs a logged-in
+     * user; a user_id in the body is only accepted when it is the caller's own.
+     */
     public function rest_update_username( WP_REST_Request $request ) {
-        $params   = $request->get_json_params();
-        $user_id  = get_current_user_id();
-        $raw_name = sanitize_text_field( $params['username'] ?? '' );
-
-        if ( ! $user_id && ! empty( $params['user_id'] ) ) {
-            $user_id = intval( $params['user_id'] );
+        $user_id = get_current_user_id();
+        if ( ! $user_id ) {
+            return new WP_Error( 'rest_forbidden', 'Log in to change your username.', array( 'status' => 401 ) );
         }
 
-        if ( empty( $raw_name ) ) {
+        $params = (array) $request->get_json_params();
+        if ( ! empty( $params['user_id'] ) && (int) $params['user_id'] !== $user_id ) {
+            return new WP_Error( 'forbidden_target', 'You can only change your own username.', array( 'status' => 403 ) );
+        }
+
+        $raw_name = mb_substr( sanitize_text_field( is_string( $params['username'] ?? null ) ? $params['username'] : '' ), 0, 60 );
+        if ( '' === $raw_name ) {
             return new WP_Error( 'missing_username', 'Username cannot be empty.', array( 'status' => 400 ) );
         }
 
-        if ( $user_id ) {
-            wp_update_user( array(
-                'ID'           => $user_id,
-                'display_name' => $raw_name,
-            ) );
-            update_user_meta( $user_id, 'kitchensynk_username_set', 'true' );
-            update_user_meta( $user_id, 'kitchensynk_custom_username', $raw_name );
-
-            $user_obj = get_userdata( $user_id );
-            return rest_ensure_response( array(
-                'success' => true,
-                'nonce'   => wp_create_nonce( 'wp_rest' ),
-                'user'    => array(
-                    'id'                       => $user_id,
-                    'name'                     => $user_obj ? $user_obj->display_name : $raw_name,
-                    'email'                    => $user_obj ? $user_obj->user_email : '',
-                    'needs_username_selection' => false,
-                ),
-            ) );
+        $limited = Kitchen_Synk_Rate_Limit::hit( 'username_user', (string) $user_id, 10, HOUR_IN_SECONDS, 'You changed your username too many times. Please try again later.' );
+        if ( is_wp_error( $limited ) ) {
+            return $limited;
         }
 
-        return rest_ensure_response( array(
-            'success' => true,
-            'name'    => $raw_name,
+        wp_update_user( array(
+            'ID'           => $user_id,
+            'display_name' => $raw_name,
         ) );
-    }
-
-    public function rest_get_me( WP_REST_Request $request ) {
-        $user_id = get_current_user_id();
-        if ( ! $user_id ) {
-            return rest_ensure_response( array(
-                'success' => false,
-                'message' => 'Not authenticated.',
-                'user'    => array(
-                    'isLoggedIn' => false,
-                    'tier'       => 'starter',
-                ),
-            ) );
-        }
+        update_user_meta( $user_id, 'kitchensynk_username_set', 'true' );
+        update_user_meta( $user_id, 'kitchensynk_custom_username', $raw_name );
 
         $user_obj = get_userdata( $user_id );
-        $tier     = get_user_meta( $user_id, 'kitchensynk_user_type', true ) ?: 'starter';
-        $profile  = get_user_meta( $user_id, 'ks_user_profile', true );
-        if ( ! is_array( $profile ) ) {
-            $profile = array();
-        }
-        $profile['planTier'] = $tier;
-        $profile['isPro']    = ( $tier !== 'free' && $tier !== 'starter' );
-
         return rest_ensure_response( array(
             'success' => true,
+            'nonce'   => wp_create_nonce( 'wp_rest' ),
             'user'    => array(
-                'isLoggedIn' => true,
-                'id'         => $user_id,
-                'name'       => $user_obj ? $user_obj->display_name : 'User',
-                'login'      => $user_obj ? $user_obj->user_login : '',
-                'email'      => $user_obj ? $user_obj->user_email : '',
-                'tier'       => $tier,
-                'isPro'      => $profile['isPro'],
-                'roles'      => $user_obj ? $user_obj->roles : array( 'subscriber' ),
+                'id'                       => $user_id,
+                'name'                     => $user_obj ? $user_obj->display_name : $raw_name,
+                'email'                    => $user_obj ? $user_obj->user_email : '',
+                'needs_username_selection' => false,
             ),
-            'profile' => $profile,
         ) );
-    }
-
-    public function rest_update_profile( WP_REST_Request $request ) {
-        $user_id = get_current_user_id();
-        if ( ! $user_id ) {
-            return new WP_Error( 'unauthorized', 'User is not logged in.', array( 'status' => 401 ) );
-        }
-        $params  = $request->get_json_params();
-        $profile = $params['profile'] ?? array();
-        if ( is_array( $profile ) ) {
-            update_user_meta( $user_id, 'ks_user_profile', $profile );
-        }
-        return rest_ensure_response( array( 'success' => true ) );
     }
 
     public function rest_get_license( WP_REST_Request $request ) {

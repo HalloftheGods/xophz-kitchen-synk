@@ -20,6 +20,15 @@ class Kitchen_Synk_AI_Gate {
 	const TRANSIENT_PREFIX     = 'kitchen_synk_ai_rate_';
 
 	/**
+	 * Largest image the Gemini routes accept, measured after base64 decoding. A phone photo is a
+	 * few megabytes; anything bigger is refused with 413 before it is decoded or sent to Gemini.
+	 */
+	const MAX_IMAGE_BYTES = 5 * MB_IN_BYTES;
+
+	/** Largest request body the non-REST /api/gemini paths read: the image above as base64, plus its JSON wrapper. */
+	const MAX_BODY_BYTES = 7 * MB_IN_BYTES;
+
+	/**
 	 * Permission callback for the AI routes: any logged-in user.
 	 *
 	 * @return true|WP_Error WP_Error with status 401 for anonymous callers.

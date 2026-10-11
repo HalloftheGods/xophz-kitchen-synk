@@ -5,11 +5,13 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-xophz-kitchen-synk-api-auth.php';
+require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-xophz-kitchen-synk-api-quota.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-xophz-kitchen-synk-api-ai.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-xophz-kitchen-synk-api-recipes.php';
 
 class Xophz_Kitchen_Synk_API {
     use Xophz_Kitchen_Synk_API_Auth;
+    use Xophz_Kitchen_Synk_API_Quota;
     use Xophz_Kitchen_Synk_API_AI;
     use Xophz_Kitchen_Synk_API_Recipes;
 
@@ -19,6 +21,8 @@ class Xophz_Kitchen_Synk_API {
     }
 
     public function register_routes() {
+        // /me, /login, /logout and /register are public on purpose: a visitor has to be able to
+        // check a session, sign in and sign up. login and register are rate limited in the trait.
         register_rest_route( 'kitchen-synk/v1', '/me', array(
             'methods'             => 'GET',
             'callback'            => array( $this, 'get_me' ),
@@ -75,10 +79,12 @@ class Xophz_Kitchen_Synk_API {
             'permission_callback' => array( 'Kitchen_Synk_AI_Gate', 'can_use_ai' ),
         ) );
 
+        // The caller's own daily AI quota. Logged-in users only; an admin can read another user's
+        // by passing user_id.
         register_rest_route( 'kitchen-synk/v1', '/quota', array(
             'methods'             => 'GET',
             'callback'            => array( $this, 'get_ai_quota' ),
-            'permission_callback' => '__return_true',
+            'permission_callback' => 'is_user_logged_in',
         ) );
     }
 

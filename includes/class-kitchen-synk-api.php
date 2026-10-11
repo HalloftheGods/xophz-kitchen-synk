@@ -8,6 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-kitchen-synk-api-stripe.php';
+require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-xophz-kitchen-synk-api-quota.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-kitchen-synk-api-ai.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-kitchen-synk-api-barcode.php';
 require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-kitchen-synk-api-auth.php';
@@ -15,6 +16,7 @@ require_once XOPHZ_KITCHEN_SYNK_PATH . 'includes/traits/trait-kitchen-synk-api-s
 
 class Kitchen_Synk_API {
     use Kitchen_Synk_API_Stripe_Trait;
+    use Xophz_Kitchen_Synk_API_Quota;
     use Kitchen_Synk_API_AI_Trait;
     use Kitchen_Synk_API_Barcode_Trait;
     use Kitchen_Synk_API_Auth_Trait;
@@ -50,11 +52,10 @@ class Kitchen_Synk_API {
             'permission_callback' => array( 'Kitchen_Synk_AI_Gate', 'can_use_ai' ),
         ) );
 
-        register_rest_route( 'kitchen-synk/v1', '/quota', array(
-            'methods'             => WP_REST_Server::READABLE,
-            'callback'            => array( $this, 'get_ai_quota' ),
-            'permission_callback' => '__return_true',
-        ) );
+        // /me, /profile and /quota are registered once, by Xophz_Kitchen_Synk_API in
+        // class-kitchen-synk-api.php. This class used to register a second copy of each on the same
+        // namespace; WordPress runs the first registered handler for a path and method, so the
+        // copies never ran and were removed.
 
         register_rest_route( 'kitchen-synk/v1', '/connectors/stripe', array(
             array(
@@ -112,21 +113,10 @@ class Kitchen_Synk_API {
             'permission_callback' => '__return_true',
         ) );
 
+        // Changes only the caller's own display name, so it needs a logged-in user.
         register_rest_route( 'kitchen-synk/v1', '/update-username', array(
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => array( $this, 'rest_update_username' ),
-            'permission_callback' => '__return_true',
-        ) );
-
-        register_rest_route( 'kitchen-synk/v1', '/me', array(
-            'methods'             => WP_REST_Server::READABLE,
-            'callback'            => array( $this, 'rest_get_me' ),
-            'permission_callback' => '__return_true',
-        ) );
-
-        register_rest_route( 'kitchen-synk/v1', '/profile', array(
-            'methods'             => WP_REST_Server::CREATABLE,
-            'callback'            => array( $this, 'rest_update_profile' ),
             'permission_callback' => 'is_user_logged_in',
         ) );
 
