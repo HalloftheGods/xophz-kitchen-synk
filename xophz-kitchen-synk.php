@@ -4,8 +4,8 @@
  * Plugin URI:        https://kitchensynk.app
  * Description:       Standalone WordPress backend and router for the Kitchen Synk web app.
  * Version:           26.10.12
- * Author:            Hall of the Gods, Inc.
- * Author URI:        https://www.hallofthegods.com/
+ * Author:            My Compass Consulting
+ * Author URI:        https://mycompassconsulting.com/
  * Category:          Command Deck
  * Group:             Ecosystem
  * Text Domain:       xophz-kitchen-synk
