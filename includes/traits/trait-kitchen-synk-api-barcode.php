@@ -81,12 +81,60 @@ trait Kitchen_Synk_API_Barcode_Trait {
             }
         }
 
+        $sourceName = 'Open Food Facts Global Database';
+        if ( ! $productData ) {
+            // Secondary Fallback: Brocade.io Open Retail
+            $brocadeUrl = "https://www.brocade.io/api/items/{$cleanBarcode}";
+            $brocadeRes = wp_remote_get( $brocadeUrl, array(
+                'headers' => array( 'User-Agent' => 'KitchenSyncBarcodeLookup/1.0' ),
+                'timeout' => 5,
+            ) );
+            if ( ! is_wp_error( $brocadeRes ) && wp_remote_retrieve_response_code( $brocadeRes ) === 200 ) {
+                $bJson = json_decode( wp_remote_retrieve_body( $brocadeRes ), true );
+                if ( ! empty( $bJson['name'] ) ) {
+                    $productData = array(
+                        'product_name' => $bJson['name'],
+                        'brands'       => isset( $bJson['brand_name'] ) ? $bJson['brand_name'] : ( isset( $bJson['brand'] ) ? $bJson['brand'] : '' ),
+                        'categories'   => isset( $bJson['category'] ) ? $bJson['category'] : '',
+                        'image_url'    => is_array( isset( $bJson['images'] ) ? $bJson['images'] : null ) && ! empty( $bJson['images'][0] ) ? $bJson['images'][0] : null,
+                    );
+                    $sourceName = 'Brocade.io Open Retail Registry';
+                }
+            }
+        }
+
+        if ( ! $productData ) {
+            // Tertiary Fallback: UPCitemdb Trial API
+            $upcUrl = "https://api.upcitemdb.com/prod/trial/lookup?upc=" . rawurlencode( $cleanBarcode );
+            $upcRes = wp_remote_get( $upcUrl, array(
+                'headers' => array(
+                    'User-Agent' => 'KitchenSyncBarcodeLookup/1.0',
+                    'Accept'     => 'application/json',
+                ),
+                'timeout' => 6,
+            ) );
+            if ( ! is_wp_error( $upcRes ) && wp_remote_retrieve_response_code( $upcRes ) === 200 ) {
+                $upcJson = json_decode( wp_remote_retrieve_body( $upcRes ), true );
+                if ( ! empty( $upcJson['items'] ) && is_array( $upcJson['items'] ) && ! empty( $upcJson['items'][0]['title'] ) ) {
+                    $item = $upcJson['items'][0];
+                    $img = is_array( isset( $item['images'] ) ? $item['images'] : null ) && ! empty( $item['images'][0] ) ? $item['images'][0] : null;
+                    $productData = array(
+                        'product_name' => $item['title'],
+                        'brands'       => isset( $item['brand'] ) ? $item['brand'] : '',
+                        'categories'   => isset( $item['category'] ) ? $item['category'] : '',
+                        'image_url'    => $img,
+                    );
+                    $sourceName = 'UPCitemdb Global Database';
+                }
+            }
+        }
+
         if ( ! $productData ) {
             return new WP_REST_Response( array(
                 'found'   => false,
                 'barcode' => $cleanBarcode,
-                'message' => "Barcode {$cleanBarcode} was not found in the Open Food Facts global database. You can manually enter the product details below.",
-                'source'  => 'Open Food Facts Global Database',
+                'message' => "Barcode {$cleanBarcode} was not found in online global databases (Open Food Facts, Brocade, UPCitemdb). You can manually enter the product details below.",
+                'source'  => 'Global Barcode Databases',
             ), 200 );
         }
 
@@ -152,7 +200,7 @@ trait Kitchen_Synk_API_Barcode_Trait {
             'ingredients'           => $ingredients,
             'nutriscore'            => $nutriscore,
             'categoriesText'        => isset( $productData['categories'] ) ? $productData['categories'] : '',
-            'source'                => 'Open Food Facts Database',
+            'source'                => $sourceName,
         ), 200 );
     }
 
