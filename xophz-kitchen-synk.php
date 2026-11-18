@@ -3,7 +3,7 @@
  * Plugin Name:       Xophz Kitchen Synk
  * Plugin URI:        https://kitchensynk.app
  * Description:       Standalone WordPress backend and router for the Kitchen Synk web app.
- * Version:           26.11.18-51
+ * Version:           26.11.18
  * Author:            My Compass Consulting
  * Author URI:        https://mycompassconsulting.com/
  * Category:          Command Deck
@@ -15,7 +15,7 @@ if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
-define( 'XOPHZ_KITCHEN_SYNK_VERSION', '26.11.18-51' );
+define( 'XOPHZ_KITCHEN_SYNK_VERSION', '26.11.18' );
 define( 'XOPHZ_KITCHEN_SYNK_PATH', plugin_dir_path( __FILE__ ) );
 define( 'XOPHZ_KITCHEN_SYNK_URL', plugin_dir_url( __FILE__ ) );
 
